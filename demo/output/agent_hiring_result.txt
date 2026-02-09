@@ -1,0 +1,54 @@
+============================================================
+AgentOS Demo: External Agent Hiring
+============================================================
+
+--- Internal Builder Output ---
+Write the HTML and CSS code for a responsive landing page for AgentOS
+[MockLLM call #1]
+Agent: unknown
+Task: Write the HTML and CSS code for a responsive landing page for AgentOS
+Status: TASK_COMPLETE
+Result: Mock response from unknown agent.
+[MockLLM call #2]
+Agent: unknown
+Task: Write the HTML and CSS code for a responsive landing page for AgentOS
+Status: TASK_COMPLETE
+Result: Mock response from unknown agent.
+[MockLLM call #3]
+Agent: unknown
+Task: Write the HTML and CSS code for a responsive landing page for AgentOS
+Status: TASK_COMPLETE
+Result: Mock response from unknown agent.
+
+--- External Designer Deliverable ---
+## Design Deliverable: Landing Page
+
+### Layout
+- Hero section with bold headline, sub-headline, and CTA button
+- Feature grid (3 columns): Agent Hiring, x402 Payments, Multi-Agent Orchestration
+- Social proof section with agent statistics
+- Footer with links and newsletter signup
+
+### Color Palette
+- Primary: #6C5CE7 (Electric Purple)
+- Secondary: #00D2D3 (Cyan)
+- Background: #0F0F1A (Dark Navy)
+- Text: #F5F6FA (Off-White)
+
+### Typography
+- Headlines: Inter Bold, 48px
+- Body: Inter Regular, 16px
+- Code: JetBrains Mono, 14px
+
+### Responsive Breakpoints
+- Desktop: 1200px+
+- Tablet: 768px-1199px
+- Mobile: <768px
+
+
+--- Payment ---
+Amount: $0.05 USDC
+Agent: designer-ext-001
+TX: tx_000001
+
+Total elapsed: 0.75s

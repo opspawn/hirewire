@@ -79,6 +79,11 @@ async def _run_research() -> dict:
     return await run_parallel_research_scenario()
 
 
+async def _run_agent_hiring() -> dict:
+    from demo.scenario_agent_hiring import run_agent_hiring_scenario
+    return await run_agent_hiring_scenario()
+
+
 async def _run_all() -> list[dict]:
     results = []
     print(f"{_BOLD}{_YELLOW}Running all demo scenarios …{_RESET}\n")
@@ -93,6 +98,10 @@ async def _run_all() -> list[dict]:
     _summary("Parallel Research", result)
     results.append(result)
 
+    result = await _run_agent_hiring()
+    _summary("Agent Hiring", result)
+    results.append(result)
+
     total = time.monotonic() - t0
     print(f"\n{_BOLD}{_GREEN}All scenarios complete in {total:.2f}s{_RESET}")
     return results
@@ -101,6 +110,7 @@ async def _run_all() -> list[dict]:
 SCENARIOS = {
     "landing-page": ("Build a Landing Page", _run_landing_page),
     "research": ("Parallel Research", _run_research),
+    "agent-hiring": ("Agent Hiring", _run_agent_hiring),
     "all": ("All Scenarios", None),  # handled specially
 }
 

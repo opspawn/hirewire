@@ -26,6 +26,7 @@ class AgentCard:
     endpoint: str = ""
     protocol: str = "a2a"
     payment: str = "x402"
+    is_external: bool = False
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -107,6 +108,23 @@ registry.register(AgentCard(
     payment="none",
 ))
 
+# Pre-register the external mock designer agent
+registry.register(AgentCard(
+    name="designer-ext-001",
+    description="Creates professional UI/UX designs, mockups, and design specifications",
+    skills=["design", "ui", "ux", "mockup", "landing-page", "branding", "prototyping"],
+    price_per_call="$0.05",
+    endpoint="http://127.0.0.1:9100",
+    protocol="a2a",
+    payment="x402",
+    is_external=True,
+    metadata={
+        "provider": "DesignStudio AI",
+        "rating": 4.8,
+        "tasks_completed": 142,
+    },
+))
+
 
 def create_registry_mcp_server() -> Server:
     """Create the MCP server for agent registry operations."""
@@ -160,6 +178,24 @@ def create_registry_mcp_server() -> Server:
                     "properties": {},
                 },
             ),
+            Tool(
+                name="discover_external_agents",
+                description="Search for external (hireable) agents by capability. Returns agents available for hire with pricing and A2A endpoints.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {
+                        "capability": {
+                            "type": "string",
+                            "description": "The capability to search for (e.g., 'design', 'screenshot')",
+                        },
+                        "max_price": {
+                            "type": "number",
+                            "description": "Maximum price per call in USD (optional)",
+                        },
+                    },
+                    "required": ["capability"],
+                },
+            ),
         ]
 
     @server.call_tool()
@@ -185,6 +221,15 @@ def create_registry_mcp_server() -> Server:
 
         if name == "list_agents":
             result = [asdict(a) for a in registry.list_all()]
+            return [TextContent(type="text", text=json.dumps(result, indent=2))]
+
+        if name == "discover_external_agents":
+            all_matches = registry.search(
+                arguments["capability"],
+                arguments.get("max_price"),
+            )
+            external = [a for a in all_matches if a.is_external]
+            result = [asdict(a) for a in external]
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
         return [TextContent(type="text", text=f"Unknown tool: {name}")]
