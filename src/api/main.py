@@ -7,6 +7,10 @@ Provides interactive REST endpoints for judges / demos:
 - GET  /agents       — list available agents
 - GET  /health       — system health / stats
 - GET  /demo         — run a pre-configured demo scenario
+- GET  /demo/start   — start live demo runner
+- GET  /demo/stop    — stop live demo runner
+- GET  /demo/seed    — seed demo data
+- GET  /demo/status  — get demo runner status
 
 Start standalone:
     uvicorn src.api.main:app --port 8000
@@ -15,6 +19,7 @@ Start standalone:
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 import uuid
 from dataclasses import asdict
@@ -29,6 +34,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.agents.ceo_agent import analyze_task
+from src.demo.runner import DemoRunner
+from src.demo.seeder import seed_demo_data
 from src.mcp_servers.payment_hub import ledger, PaymentRecord
 from src.mcp_servers.registry_server import registry
 from src.storage import get_storage
@@ -114,6 +121,10 @@ class DemoResponse(BaseModel):
     transactions_after: int
     agents_available: int
 
+
+# ── Demo runner ──────────────────────────────────────────────────────────────
+
+_demo_runner = DemoRunner()
 
 # ── Background task execution ────────────────────────────────────────────────
 
@@ -325,3 +336,46 @@ async def run_demo():
         transactions_after=txs_after,
         agents_available=agents_count,
     )
+
+
+# ── Live Demo Mode endpoints ────────────────────────────────────────────────
+
+
+@app.get("/demo/seed")
+async def demo_seed():
+    """Seed the database with realistic demo data."""
+    result = seed_demo_data()
+    return {"status": "seeded", **result}
+
+
+@app.get("/demo/start")
+async def demo_start():
+    """Start the live demo runner (submits tasks every 30s)."""
+    if _demo_runner.is_running:
+        return {"status": "already_running", **_demo_runner.status()}
+    _demo_runner.start()
+    return {"status": "started", **_demo_runner.status()}
+
+
+@app.get("/demo/stop")
+async def demo_stop():
+    """Stop the live demo runner."""
+    was_running = _demo_runner.is_running
+    _demo_runner.stop()
+    return {"status": "stopped", "was_running": was_running, **_demo_runner.status()}
+
+
+@app.get("/demo/status")
+async def demo_status():
+    """Get current demo runner status."""
+    return _demo_runner.status()
+
+
+# ── Startup hook ────────────────────────────────────────────────────────────
+
+
+@app.on_event("startup")
+async def _on_startup():
+    """Auto-seed demo data if AGENTOS_DEMO=1."""
+    if os.environ.get("AGENTOS_DEMO") == "1":
+        seed_demo_data()

@@ -273,15 +273,47 @@
     font-size: 11px;
   }
   footer a { color: var(--accent); text-decoration: none; }
+  /* Demo mode */
+  .demo-badge {
+    background: #422006;
+    color: var(--yellow);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    animation: pulse 2s infinite;
+    display: none;
+  }
+  .demo-badge.active { display: inline-block; }
+  .demo-btn {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    padding: 6px 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .demo-btn:hover { background: var(--accent-dim); }
+  .demo-btn.active { background: var(--yellow); color: var(--bg); }
+  .header-controls { display: flex; align-items: center; gap: 10px; }
 </style>
 </head>
 <body>
 
 <header>
-  <div class="logo">AgentOS <span>Dashboard</span></div>
-  <div class="health-badge">
-    <div class="health-dot" id="health-dot"></div>
-    <span id="health-text">connecting...</span>
+  <div class="logo">AgentOS <span>Dashboard</span> <span class="demo-badge" id="demo-badge">DEMO</span></div>
+  <div class="header-controls">
+    <button class="demo-btn" id="demo-btn" onclick="toggleDemo()">Start Demo</button>
+    <div class="health-badge">
+      <div class="health-dot" id="health-dot"></div>
+      <span id="health-text">connecting...</span>
+    </div>
   </div>
 </header>
 
@@ -514,8 +546,51 @@ async function refreshAll() {
   renderTransactions(txs);
 }
 
+// Demo mode toggle
+let demoRunning = false;
+
+async function toggleDemo() {
+  const btn = document.getElementById('demo-btn');
+  const badge = document.getElementById('demo-badge');
+  btn.disabled = true;
+  try {
+    if (demoRunning) {
+      await fetch(API + '/demo/stop');
+      demoRunning = false;
+      btn.textContent = 'Start Demo';
+      btn.classList.remove('active');
+      badge.classList.remove('active');
+    } else {
+      await fetch(API + '/demo/seed');
+      await fetch(API + '/demo/start');
+      demoRunning = true;
+      btn.textContent = 'Stop Demo';
+      btn.classList.add('active');
+      badge.classList.add('active');
+      await refreshAll();
+    }
+  } catch (e) {
+    console.error('Demo toggle failed:', e);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function checkDemoStatus() {
+  try {
+    const data = await fetchJSON('/demo/status');
+    if (data && data.running) {
+      demoRunning = true;
+      document.getElementById('demo-btn').textContent = 'Stop Demo';
+      document.getElementById('demo-btn').classList.add('active');
+      document.getElementById('demo-badge').classList.add('active');
+    }
+  } catch {}
+}
+
 // Initial load + auto-refresh every 5s
 refreshAll();
+checkDemoStatus();
 setInterval(refreshAll, 5000);
 </script>
 </body>
