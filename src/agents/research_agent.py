@@ -43,21 +43,46 @@ async def web_search(
     query: str,
     max_results: int = 5,
 ) -> dict[str, Any]:
-    """Search the web for information.
+    """Search the web for information using DuckDuckGo.
 
-    Placeholder - will integrate with real search API (Bing, etc.).
+    Args:
+        query: Search query string.
+        max_results: Maximum number of results to return (default: 5).
     """
-    return {
-        "query": query,
-        "results": [
+    try:
+        from ddgs import DDGS
+
+        with DDGS() as ddgs:
+            raw_results = list(ddgs.text(query, max_results=max_results))
+
+        results = [
             {
-                "title": f"Result for: {query}",
-                "url": "https://example.com",
-                "snippet": f"Placeholder search result for '{query}'",
+                "title": r.get("title", ""),
+                "url": r.get("href", r.get("link", "")),
+                "snippet": r.get("body", r.get("snippet", "")),
             }
-        ],
-        "total_results": 1,
-    }
+            for r in raw_results
+        ]
+
+        return {
+            "query": query,
+            "results": results,
+            "total_results": len(results),
+        }
+    except ImportError:
+        return {
+            "query": query,
+            "results": [],
+            "total_results": 0,
+            "error": "ddgs package not installed. Run: pip install ddgs",
+        }
+    except Exception as e:
+        return {
+            "query": query,
+            "results": [],
+            "total_results": 0,
+            "error": f"Search failed: {e}",
+        }
 
 
 @tool(name="analyze_data", description="Analyze structured data and produce insights")

@@ -5,11 +5,13 @@ Uses ChatAgent with tools for task analysis, budget checking, and agent hiring.
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from agent_framework import ChatAgent, tool
 
 from src.config import get_chat_client, get_settings
+from src.mcp_servers.payment_hub import ledger
 
 CEO_INSTRUCTIONS = """You are the CEO Agent of AgentOS, an autonomous agent operating system.
 
@@ -48,30 +50,148 @@ When you receive a task, respond with a structured plan:
 
 @tool(name="analyze_task", description="Break down a task into subtasks with agent assignments")
 async def analyze_task(task_description: str) -> dict[str, Any]:
-    """Analyze a task and return a structured breakdown."""
-    return {
-        "original_task": task_description,
-        "subtasks": [
-            {"id": "research", "description": f"Research: {task_description}", "agent": "research"},
-            {"id": "build", "description": f"Build: {task_description}", "agent": "builder"},
-        ],
-        "execution_order": "sequential",
-        "estimated_cost": 0.0,
-        "status": "planned",
-    }
+    """Analyze a task and return a structured breakdown.
+
+    Parses the task description to detect task types using keyword matching
+    and returns appropriate subtask breakdowns with cost estimates.
+    """
+    try:
+        desc_lower = task_description.lower()
+        words = desc_lower.split()
+        word_count = len(words)
+
+        # Keyword sets for detecting task types
+        research_keywords = {
+            "search", "find", "compare", "analyze", "research", "investigate",
+            "evaluate", "review", "assess", "study", "explore", "look",
+            "report", "summarize", "survey", "benchmark", "discover",
+        }
+        build_keywords = {
+            "build", "create", "implement", "deploy", "code", "write",
+            "develop", "fix", "refactor", "test", "install", "setup",
+            "configure", "migrate", "update", "upgrade", "ship", "launch",
+        }
+
+        has_research = any(kw in desc_lower for kw in research_keywords)
+        has_build = any(kw in desc_lower for kw in build_keywords)
+
+        # Determine task type and build subtasks
+        subtasks: list[dict[str, Any]] = []
+
+        if has_research and has_build:
+            # Complex task: research first, then build
+            subtasks = [
+                {
+                    "id": "research",
+                    "description": f"Research phase: gather information for '{task_description}'",
+                    "agent": "research",
+                },
+                {
+                    "id": "build",
+                    "description": f"Build phase: implement based on research for '{task_description}'",
+                    "agent": "builder",
+                },
+            ]
+            execution_order = "sequential"
+        elif has_research:
+            subtasks = [
+                {
+                    "id": "research",
+                    "description": f"Research: {task_description}",
+                    "agent": "research",
+                },
+            ]
+            execution_order = "parallel"
+        elif has_build:
+            subtasks = [
+                {
+                    "id": "build",
+                    "description": f"Build: {task_description}",
+                    "agent": "builder",
+                },
+            ]
+            execution_order = "parallel"
+        else:
+            # Default: treat as research + build sequential
+            subtasks = [
+                {
+                    "id": "research",
+                    "description": f"Research: {task_description}",
+                    "agent": "research",
+                },
+                {
+                    "id": "build",
+                    "description": f"Build: {task_description}",
+                    "agent": "builder",
+                },
+            ]
+            execution_order = "sequential"
+
+        # Estimate cost based on complexity (word count)
+        if word_count <= 10:
+            estimated_cost = 0.10
+            complexity = "simple"
+        elif word_count <= 30:
+            estimated_cost = 0.25
+            complexity = "moderate"
+        elif word_count <= 60:
+            estimated_cost = 0.50
+            complexity = "complex"
+        else:
+            estimated_cost = 1.00
+            complexity = "very_complex"
+
+        # Scale cost by number of subtasks
+        estimated_cost *= len(subtasks)
+
+        return {
+            "original_task": task_description,
+            "subtasks": subtasks,
+            "execution_order": execution_order,
+            "estimated_cost": round(estimated_cost, 2),
+            "complexity": complexity,
+            "task_type": "research+build" if (has_research and has_build) else
+                         "research" if has_research else
+                         "build" if has_build else "general",
+            "status": "planned",
+        }
+    except Exception as e:
+        return {
+            "original_task": task_description,
+            "subtasks": [],
+            "execution_order": "sequential",
+            "estimated_cost": 0.0,
+            "status": "error",
+            "error": str(e),
+        }
 
 
 @tool(name="check_budget", description="Check remaining budget for the current task")
 async def check_budget(task_id: str) -> dict[str, Any]:
-    """Check budget allocation for a task."""
-    # Placeholder - will be backed by real ledger
-    return {
-        "task_id": task_id,
-        "allocated": 1.00,
-        "spent": 0.00,
-        "remaining": 1.00,
-        "currency": "USDC",
-    }
+    """Check budget allocation for a task using the real PaymentLedger."""
+    try:
+        budget = ledger.get_budget(task_id)
+        if budget is None:
+            return {
+                "task_id": task_id,
+                "allocated": 0.0,
+                "spent": 0.0,
+                "remaining": 0.0,
+                "currency": "USDC",
+                "message": f"No budget allocated for task '{task_id}'. Call allocate_budget first.",
+            }
+        return {
+            "task_id": task_id,
+            "allocated": budget.allocated,
+            "spent": budget.spent,
+            "remaining": budget.remaining,
+            "currency": "USDC",
+        }
+    except Exception as e:
+        return {
+            "task_id": task_id,
+            "error": f"Failed to check budget: {e}",
+        }
 
 
 @tool(name="approve_hire", description="Approve hiring an external agent for a subtask")
