@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentOS Dashboard</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --border: #334155;
+    --accent: #38bdf8;
+    --accent-dim: #0ea5e9;
+    --green: #22c55e;
+    --yellow: #eab308;
+    --red: #ef4444;
+    --text: #e2e8f0;
+    --text-dim: #94a3b8;
+    --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+  /* Header */
+  header {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logo {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--accent);
+    letter-spacing: 1px;
+  }
+  .logo span { color: var(--text); font-weight: 400; }
+  .health-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+  }
+  .health-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  /* Task form */
+  .submit-bar {
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 24px;
+    display: flex;
+    gap: 10px;
+  }
+  .submit-bar input {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    outline: none;
+  }
+  .submit-bar input:focus { border-color: var(--accent); }
+  .submit-bar input::placeholder { color: var(--text-dim); }
+  .submit-bar button {
+    background: var(--accent);
+    color: var(--bg);
+    border: none;
+    border-radius: 6px;
+    padding: 8px 20px;
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .submit-bar button:hover { background: var(--accent-dim); }
+  .submit-bar button:disabled { opacity: 0.5; cursor: not-allowed; }
+  /* Grid */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: auto auto;
+    gap: 16px;
+    padding: 16px 24px;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .panel {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    min-height: 260px;
+    max-height: 400px;
+    display: flex;
+    flex-direction: column;
+  }
+  .panel-header {
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .panel-header .count {
+    background: var(--bg);
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .panel-body {
+    padding: 12px 16px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  /* Stats row */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  .stat-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+  }
+  .stat-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 4px;
+  }
+  .stat-label {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+  }
+  /* Task list */
+  .task-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .task-item:last-child { border-bottom: none; }
+  .status-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  .status-completed { background: #16532e; color: var(--green); }
+  .status-running { background: #422006; color: var(--yellow); }
+  .status-pending { background: #1e293b; color: var(--text-dim); border: 1px solid var(--border); }
+  .status-failed { background: #450a0a; color: var(--red); }
+  .task-desc {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+  .task-time {
+    color: var(--text-dim);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  /* Agent cards */
+  .agent-card {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+  .agent-card:last-child { margin-bottom: 0; }
+  .agent-name {
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--accent);
+    margin-bottom: 2px;
+  }
+  .agent-desc {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-bottom: 6px;
+  }
+  .agent-meta {
+    display: flex;
+    gap: 12px;
+    font-size: 10px;
+    color: var(--text-dim);
+  }
+  .agent-meta .tag {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 1px 6px;
+  }
+  .ext-badge {
+    background: #422006;
+    color: var(--yellow);
+    border-radius: 3px;
+    padding: 1px 6px;
+    font-size: 10px;
+  }
+  /* Tx table */
+  .tx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  .tx-table th {
+    text-align: left;
+    padding: 6px 8px;
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tx-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tx-table tr:last-child td { border-bottom: none; }
+  .usdc { color: var(--green); font-weight: 600; }
+  .empty-state {
+    color: var(--text-dim);
+    text-align: center;
+    padding: 32px 16px;
+    font-size: 12px;
+  }
+  /* Footer */
+  footer {
+    text-align: center;
+    padding: 16px;
+    color: var(--text-dim);
+    font-size: 11px;
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">AgentOS <span>Dashboard</span></div>
+  <div class="health-badge">
+    <div class="health-dot" id="health-dot"></div>
+    <span id="health-text">connecting...</span>
+  </div>
+</header>
+
+<div class="submit-bar">
+  <input type="text" id="task-input" placeholder="Describe a task for the CEO agent..." maxlength="2000" />
+  <button id="submit-btn" onclick="submitTask()">Submit Task</button>
+</div>
+
+<div class="grid">
+  <!-- System Stats -->
+  <div class="panel" style="grid-column: span 2;">
+    <div class="panel-header">System Stats</div>
+    <div class="panel-body">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-uptime">--</div>
+          <div class="stat-label">Uptime</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-tasks">--</div>
+          <div class="stat-label">Total Tasks</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-agents">--</div>
+          <div class="stat-label">Agents</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-spent">--</div>
+          <div class="stat-label">USDC Spent</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Task Feed -->
+  <div class="panel">
+    <div class="panel-header">
+      Task Feed
+      <span class="count" id="task-count">0</span>
+    </div>
+    <div class="panel-body" id="task-feed">
+      <div class="empty-state">No tasks yet. Submit one above.</div>
+    </div>
+  </div>
+
+  <!-- Agent Roster -->
+  <div class="panel">
+    <div class="panel-header">
+      Agent Roster
+      <span class="count" id="agent-count">0</span>
+    </div>
+    <div class="panel-body" id="agent-roster">
+      <div class="empty-state">Loading agents...</div>
+    </div>
+  </div>
+
+  <!-- Payment Log -->
+  <div class="panel" style="grid-column: span 2;">
+    <div class="panel-header">
+      Payment Log
+      <span class="count" id="tx-count">0</span>
+    </div>
+    <div class="panel-body" id="payment-log">
+      <div class="empty-state">No transactions yet.</div>
+    </div>
+  </div>
+</div>
+
+<footer>
+  AgentOS &mdash; Self-Sustaining Agent Operating System &mdash;
+  <a href="https://github.com/opspawn/agentos" target="_blank">GitHub</a> &mdash;
+  Microsoft AI Dev Days 2026
+</footer>
+
+<script>
+const API = window.location.origin;
+
+function fmt(ts) {
+  if (!ts) return '--';
+  const d = new Date(ts * 1000);
+  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function fmtUptime(s) {
+  if (!s && s !== 0) return '--';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return h + 'h ' + m + 'm';
+  return m + 'm ' + Math.floor(s % 60) + 's';
+}
+
+function statusClass(s) {
+  return 'status-' + (s || 'pending');
+}
+
+async function fetchJSON(path) {
+  try {
+    const r = await fetch(API + path);
+    if (!r.ok) return null;
+    return await r.json();
+  } catch { return null; }
+}
+
+async function submitTask() {
+  const input = document.getElementById('task-input');
+  const btn = document.getElementById('submit-btn');
+  const desc = input.value.trim();
+  if (!desc) return;
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+  try {
+    await fetch(API + '/tasks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: desc, budget: 1.0 })
+    });
+    input.value = '';
+    await refreshAll();
+  } catch (e) {
+    console.error('Submit failed:', e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Submit Task';
+  }
+}
+
+document.getElementById('task-input').addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') submitTask();
+});
+
+function renderHealth(data) {
+  const dot = document.getElementById('health-dot');
+  const text = document.getElementById('health-text');
+  if (!data) {
+    dot.style.background = 'var(--red)';
+    text.textContent = 'offline';
+    return;
+  }
+  dot.style.background = 'var(--green)';
+  text.textContent = data.status;
+  document.getElementById('stat-uptime').textContent = fmtUptime(data.uptime_seconds);
+  document.getElementById('stat-tasks').textContent = data.tasks_total;
+  document.getElementById('stat-agents').textContent = data.agents_count;
+  document.getElementById('stat-spent').textContent = '$' + data.total_spent_usdc.toFixed(2);
+}
+
+function renderTasks(tasks) {
+  const el = document.getElementById('task-feed');
+  const cnt = document.getElementById('task-count');
+  if (!tasks || tasks.length === 0) {
+    el.innerHTML = '<div class="empty-state">No tasks yet. Submit one above.</div>';
+    cnt.textContent = '0';
+    return;
+  }
+  cnt.textContent = tasks.length;
+  const sorted = tasks.sort((a, b) => b.created_at - a.created_at).slice(0, 50);
+  el.innerHTML = sorted.map(t => `
+    <div class="task-item">
+      <span class="status-badge ${statusClass(t.status)}">${t.status}</span>
+      <span class="task-desc" title="${t.description}">${t.description}</span>
+      <span class="task-time">${fmt(t.created_at)}</span>
+    </div>
+  `).join('');
+}
+
+function renderAgents(agents) {
+  const el = document.getElementById('agent-roster');
+  const cnt = document.getElementById('agent-count');
+  if (!agents || agents.length === 0) {
+    el.innerHTML = '<div class="empty-state">No agents registered.</div>';
+    cnt.textContent = '0';
+    return;
+  }
+  cnt.textContent = agents.length;
+  el.innerHTML = agents.map(a => `
+    <div class="agent-card">
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span class="agent-name">${a.name}</span>
+        ${a.is_external ? '<span class="ext-badge">EXTERNAL</span>' : ''}
+      </div>
+      <div class="agent-desc">${a.description}</div>
+      <div class="agent-meta">
+        ${a.skills.map(s => '<span class="tag">' + s + '</span>').join('')}
+        <span>${a.price_per_call}</span>
+        <span>${a.protocol}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderTransactions(txs) {
+  const el = document.getElementById('payment-log');
+  const cnt = document.getElementById('tx-count');
+  if (!txs || txs.length === 0) {
+    el.innerHTML = '<div class="empty-state">No transactions yet.</div>';
+    cnt.textContent = '0';
+    return;
+  }
+  cnt.textContent = txs.length;
+  const sorted = txs.sort((a, b) => b.timestamp - a.timestamp).slice(0, 50);
+  el.innerHTML = `
+    <table class="tx-table">
+      <thead><tr>
+        <th>Time</th><th>From</th><th>To</th><th>Amount</th><th>Task</th><th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${sorted.map(t => `<tr>
+          <td>${fmt(t.timestamp)}</td>
+          <td>${t.from_agent}</td>
+          <td>${t.to_agent}</td>
+          <td class="usdc">$${t.amount_usdc.toFixed(4)}</td>
+          <td>${t.task_id.slice(0, 16)}</td>
+          <td>${t.status}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function refreshAll() {
+  const [health, tasks, agents, txs] = await Promise.all([
+    fetchJSON('/health'),
+    fetchJSON('/tasks'),
+    fetchJSON('/agents'),
+    fetchJSON('/transactions')
+  ]);
+  renderHealth(health);
+  renderTasks(tasks);
+  renderAgents(agents);
+  renderTransactions(txs);
+}
+
+// Initial load + auto-refresh every 5s
+refreshAll();
+setInterval(refreshAll, 5000);
+</script>
+</body>
+</html>

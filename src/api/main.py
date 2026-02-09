@@ -20,8 +20,12 @@ import uuid
 from dataclasses import asdict
 from typing import Any
 
+from pathlib import Path
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from src.agents.ceo_agent import analyze_task
@@ -46,6 +50,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Dashboard static files ──────────────────────────────────────────────────
+
+_DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "dashboard"
+if _DASHBOARD_DIR.is_dir():
+    app.mount("/dashboard", StaticFiles(directory=str(_DASHBOARD_DIR), html=True), name="dashboard")
 
 # ── Request / Response models ────────────────────────────────────────────────
 
@@ -134,6 +144,33 @@ async def _execute_task(task_id: str, description: str, budget: float) -> None:
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
+
+@app.get("/", response_class=HTMLResponse)
+async def root():
+    """Serve the dashboard or redirect to /dashboard."""
+    index = _DASHBOARD_DIR / "index.html"
+    if index.is_file():
+        return HTMLResponse(content=index.read_text(), status_code=200)
+    return HTMLResponse(content="<h1>AgentOS</h1><p>Dashboard not found.</p>", status_code=200)
+
+
+@app.get("/tasks", response_model=list[TaskResponse])
+async def list_tasks():
+    """List all tasks (most recent first)."""
+    storage = get_storage()
+    rows = storage.list_tasks()
+    return [
+        TaskResponse(
+            task_id=r["task_id"],
+            description=r["description"],
+            status=r["status"],
+            budget_usd=r["budget_usd"],
+            created_at=r["created_at"],
+            result=r.get("result"),
+        )
+        for r in rows
+    ]
 
 
 @app.post("/tasks", response_model=TaskResponse, status_code=201)
