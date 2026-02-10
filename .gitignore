@@ -1,11 +1,30 @@
+# Environment & secrets
 .env
+credentials/
+
+# Python
 .venv/
 __pycache__/
 *.pyc
+*.pyo
 .pytest_cache/
 *.egg-info/
 dist/
 build/
+.mypy_cache/
+.ruff_cache/
+
+# Data
 data/*.db
 data/*.db-wal
 data/*.db-shm
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -16,6 +16,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel, Field
 
 from src.responsible_ai import get_safety_checker
+from src.llm import get_llm_client
 
 router = APIRouter(tags=["responsible-ai"])
 
@@ -52,6 +53,42 @@ class BiasReportResponse(BaseModel):
     recommendations: list[str]
     fairness_score: float
     generated_at: float
+
+
+class ResumeAnalysisBody(BaseModel):
+    resume_text: str = Field(..., min_length=1, max_length=50000)
+
+
+class ResumeAnalysisResponse(BaseModel):
+    skills: list[str]
+    experience_years: int
+    education: str
+    fit_score: float
+    summary: str
+    provider: str
+
+
+class JobMatchBody(BaseModel):
+    candidate_profile: dict[str, Any]
+    job_requirements: dict[str, Any]
+
+
+class JobMatchResponse(BaseModel):
+    match_score: float
+    matched_skills: list[str]
+    missing_skills: list[str]
+    reasoning: str
+    provider: str
+
+
+class InterviewQuestionsBody(BaseModel):
+    job_posting: str = Field(..., min_length=1, max_length=20000)
+    resume: str = Field(..., min_length=1, max_length=50000)
+
+
+class InterviewQuestionsResponse(BaseModel):
+    questions: list[str]
+    provider: str
 
 
 class SafetyStatusResponse(BaseModel):
@@ -160,3 +197,58 @@ async def safety_status():
     checker = get_safety_checker()
     stats = checker.get_stats()
     return SafetyStatusResponse(**stats)
+
+
+# ── LLM-powered hiring analysis endpoints ─────────────────────────────────
+
+
+@router.post("/responsible-ai/analyze-resume", response_model=ResumeAnalysisResponse)
+async def analyze_resume(body: ResumeAnalysisBody):
+    """Analyze a resume using Azure OpenAI GPT-4o.
+
+    Extracts skills, experience, education, and provides a fit score.
+    Falls back to rule-based analysis when Azure credentials are not set.
+    """
+    llm = get_llm_client()
+    result = llm.resume_analyze(body.resume_text)
+    return ResumeAnalysisResponse(
+        skills=result.get("skills", []),
+        experience_years=result.get("experience_years", 0),
+        education=result.get("education", "unknown"),
+        fit_score=result.get("fit_score", 0.0),
+        summary=result.get("summary", ""),
+        provider="azure_openai" if llm.is_azure else "rule_based",
+    )
+
+
+@router.post("/responsible-ai/job-match", response_model=JobMatchResponse)
+async def job_match(body: JobMatchBody):
+    """Match a candidate profile against job requirements using Azure OpenAI.
+
+    Returns match score, matched/missing skills, and reasoning.
+    Falls back to deterministic skill overlap when Azure credentials are not set.
+    """
+    llm = get_llm_client()
+    result = llm.job_match(body.candidate_profile, body.job_requirements)
+    return JobMatchResponse(
+        match_score=result.get("match_score", 0.0),
+        matched_skills=result.get("matched_skills", []),
+        missing_skills=result.get("missing_skills", []),
+        reasoning=result.get("reasoning", ""),
+        provider="azure_openai" if llm.is_azure else "rule_based",
+    )
+
+
+@router.post("/responsible-ai/interview-questions", response_model=InterviewQuestionsResponse)
+async def interview_questions(body: InterviewQuestionsBody):
+    """Generate tailored interview questions using Azure OpenAI.
+
+    Creates 5 questions based on the job posting and candidate resume.
+    Falls back to keyword-based question generation when Azure is not set.
+    """
+    llm = get_llm_client()
+    questions = llm.generate_interview_questions(body.job_posting, body.resume)
+    return InterviewQuestionsResponse(
+        questions=questions,
+        provider="azure_openai" if llm.is_azure else "rule_based",
+    )

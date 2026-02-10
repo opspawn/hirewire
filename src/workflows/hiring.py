@@ -17,6 +17,7 @@ import httpx
 from src.mcp_servers.registry_server import registry, AgentCard
 from src.mcp_servers.payment_hub import ledger
 from src.metrics.collector import get_metrics_collector
+from src.llm import get_llm_client
 
 
 @dataclass
@@ -50,7 +51,11 @@ def discover_external_agents(capability: str, max_price: float | None = None) ->
 
 
 def evaluate_agent(agent: AgentCard, required_skills: list[str]) -> HiringDecision:
-    """Score an external agent against required skills."""
+    """Score an external agent against required skills.
+
+    Uses LLM-powered matching when Azure OpenAI is available, falls back
+    to deterministic skill overlap otherwise.
+    """
     agent_skills_lower = {s.lower() for s in agent.skills}
     required_lower = {s.lower() for s in required_skills}
 
@@ -61,6 +66,29 @@ def evaluate_agent(agent: AgentCard, required_skills: list[str]) -> HiringDecisi
         match_score = len(overlap) / len(required_lower)
 
     price = float(agent.price_per_call.replace("$", ""))
+
+    # Use LLM for richer evaluation when available
+    llm = get_llm_client()
+    if llm.is_azure and required_skills:
+        try:
+            llm_result = llm.job_match(
+                candidate_profile={"skills": agent.skills, "name": agent.name},
+                job_requirements={"required_skills": required_skills},
+            )
+            llm_score = llm_result.get("match_score", match_score)
+            reasoning = llm_result.get("reasoning", "")
+            if isinstance(llm_score, (int, float)) and 0.0 <= llm_score <= 1.0:
+                match_score = llm_score
+            if reasoning:
+                return HiringDecision(
+                    agent_name=agent.name,
+                    approved=match_score >= 0.3,
+                    reason=f"AI evaluation: {reasoning}",
+                    price_usdc=price,
+                    capability_match=match_score,
+                )
+        except Exception:
+            pass  # Fall through to rule-based
 
     return HiringDecision(
         agent_name=agent.name,

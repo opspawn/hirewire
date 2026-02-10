@@ -169,19 +169,33 @@ HireWire runs locally with zero configuration using a mock provider, or connects
 | Provider | Setup | Use Case |
 |----------|-------|----------|
 | `mock` (default) | None needed | Testing, CI, demos |
-| `azure_ai` | Azure subscription + endpoint | Production |
+| `azure_openai` | Azure OpenAI endpoint + key | Production (recommended) |
+| `azure_ai` | Azure AI Project endpoint | Production |
 | `ollama` | Install Ollama, pull model | Local development |
 | `openai` | API key | Alternative cloud |
 
 ```bash
-# Use Azure OpenAI in production
-export MODEL_PROVIDER=azure_ai
-export AZURE_AI_PROJECT_ENDPOINT=https://your-resource.openai.azure.com
+# Use Azure OpenAI in production (auto-detected when env vars set)
+export AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+export AZURE_OPENAI_KEY=your-key
+export AZURE_OPENAI_DEPLOYMENT=gpt-4o
 
 # Or run locally with Ollama
 export MODEL_PROVIDER=ollama
 export OLLAMA_MODEL=llama3.2
 ```
+
+### LLM-Powered Hiring Analysis
+
+When Azure OpenAI is configured, HireWire uses GPT-4o for intelligent hiring:
+
+| Endpoint | What It Does |
+|----------|--------------|
+| `POST /responsible-ai/analyze-resume` | Extract skills, experience, fit score from resume text |
+| `POST /responsible-ai/job-match` | Score candidate against job requirements with reasoning |
+| `POST /responsible-ai/interview-questions` | Generate 5 tailored interview questions |
+
+All endpoints gracefully fall back to rule-based scoring when Azure credentials are not set.
 
 ---
 
@@ -458,6 +472,20 @@ az containerapp create \
   --max-replicas 3 \
   --cpu 0.5 --memory 1Gi
 ```
+
+---
+
+## Responsible AI
+
+HireWire includes Responsible AI guardrails throughout the hiring pipeline:
+
+- **Content Safety**: All resumes and job postings are screened for bias indicators, PII exposure, and inappropriate content before processing.
+- **Bias Detection**: The system monitors for gender, age, ethnicity, disability, and religion bias in hiring decisions and provides fairness scoring.
+- **Human-in-the-Loop**: Expensive operations (above configurable cost threshold) require explicit human approval before execution.
+- **Audit Trail**: All approvals, rejections, safety checks, and payments are logged for accountability.
+- **Transparent AI**: When GPT-4o is used for resume analysis or job matching, the provider is clearly indicated in API responses.
+
+> **Disclaimer**: HireWire's Responsible AI features are advisory tools designed to assist human decision-makers. They should not be used as the sole basis for hiring decisions. All AI-generated assessments should be supplemented with human review. The bias detection system uses keyword-based heuristics and may produce false positives or miss subtle forms of bias. For production deployments, integrate with Azure AI Content Safety for more robust content moderation.
 
 ---
 
