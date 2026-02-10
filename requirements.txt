@@ -2,7 +2,9 @@
 # Python dependencies
 
 # Core Agent Framework (preview version required)
-agent-framework>=0.1.0.dev
+# SDK v1.0.0b260130 provides: ChatAgent, SequentialBuilder, ConcurrentBuilder,
+# HandoffBuilder, MCPStdioTool, MCPStreamableHTTPTool, WorkflowOutputEvent
+agent-framework>=1.0.0b260130
 
 # Azure Services
 azure-ai-agents>=1.0.0

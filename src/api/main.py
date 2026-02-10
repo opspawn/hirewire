@@ -869,6 +869,46 @@ async def demo_live(body: dict[str, Any] | None = None):
     }
 
 
+# ── Microsoft Agent Framework SDK endpoints ────────────────────────────────
+
+
+@app.get("/sdk/info")
+async def sdk_info():
+    """Return Microsoft Agent Framework SDK installation and capability info."""
+    from src.integrations.ms_agent_framework import get_sdk_info
+    from src.integrations.mcp_tools import get_mcp_tool_info
+    info = get_sdk_info()
+    info["mcp_tools"] = get_mcp_tool_info()
+    return info
+
+
+@app.post("/sdk/orchestrate")
+async def sdk_orchestrate(body: dict[str, Any]):
+    """Run a task through the Microsoft Agent Framework SDK orchestration.
+
+    Body: {"task": "...", "pattern": "sequential|concurrent|handoff", "agents": ["ceo", "builder"]}
+    """
+    from src.integrations.ms_agent_framework import SDKOrchestrator
+    task = body.get("task", "")
+    pattern = body.get("pattern", "sequential")
+    agent_names = body.get("agents")
+    if not task:
+        raise HTTPException(status_code=400, detail="task is required")
+
+    orch = SDKOrchestrator()
+    result = await orch.run(task, pattern=pattern, agents=agent_names)
+    return {
+        "orchestration_id": result.orchestration_id,
+        "pattern": result.pattern,
+        "status": result.status,
+        "final_output": result.final_output,
+        "agent_results": result.agent_results,
+        "elapsed_ms": result.elapsed_ms,
+        "metadata": result.metadata,
+        "sdk_version": result.sdk_version,
+    }
+
+
 # ── Startup hook ────────────────────────────────────────────────────────────
 
 

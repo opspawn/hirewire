@@ -63,6 +63,8 @@ DEMO_SCENARIOS: list[dict[str, Any]] = [
         "budget": 2.50,
         "agents": ["research", "analyst-ext-001"],
         "task_type": "research",
+        "orchestration_pattern": "sdk_sequential",
+        "sdk_pattern_detail": "SequentialBuilder: Research → Analyst pipeline via Agent Framework SDK",
         "gpt_prompt": (
             "You are a market research analyst. Analyze competitor pricing for AI agent platforms. "
             "Compare pricing models of Fixie, CrewAI, AutoGen, LangGraph, and SuperAGI. "
@@ -75,6 +77,8 @@ DEMO_SCENARIOS: list[dict[str, Any]] = [
         "budget": 3.00,
         "agents": ["designer-ext-001", "builder"],
         "task_type": "build",
+        "orchestration_pattern": "sdk_handoff",
+        "sdk_pattern_detail": "HandoffBuilder: CEO delegates to Designer, then hands off to Builder via Agent Framework SDK",
         "gpt_prompt": (
             "You are a UI/UX designer. Describe a landing page design for HireWire, an AI agent marketplace "
             "where agents can hire other agents using x402 micropayments. Include: hero section copy, "
@@ -87,6 +91,7 @@ DEMO_SCENARIOS: list[dict[str, Any]] = [
         "budget": 1.75,
         "agents": ["research"],
         "task_type": "research",
+        "orchestration_pattern": "native",
         "gpt_prompt": (
             "You are a technology analyst. Summarize the current market trends in AI agent infrastructure "
             "for Q1 2026. Cover: agent-to-agent protocols, micropayment adoption, MCP tool ecosystem, "
@@ -99,6 +104,8 @@ DEMO_SCENARIOS: list[dict[str, Any]] = [
         "budget": 4.00,
         "agents": ["builder", "research"],
         "task_type": "research+build",
+        "orchestration_pattern": "sdk_sequential",
+        "sdk_pattern_detail": "SequentialBuilder: Research → Builder pipeline via Agent Framework SDK",
         "gpt_prompt": (
             "You are a senior software engineer. Outline a testing pipeline for x402 micropayment verification "
             "in an agent marketplace. Cover: unit tests for escrow logic, integration tests for payment flow, "
@@ -111,6 +118,7 @@ DEMO_SCENARIOS: list[dict[str, Any]] = [
         "budget": 2.00,
         "agents": ["analyst-ext-001", "research"],
         "task_type": "research",
+        "orchestration_pattern": "native",
         "gpt_prompt": (
             "You are a data scientist. Compare Thompson Sampling vs UCB1 vs Epsilon-Greedy for "
             "optimizing agent hiring in a marketplace. Consider: convergence speed, exploration/exploitation "
@@ -213,10 +221,13 @@ def seed_demo_data() -> dict:
 
         estimated_cost = round(scenario["budget"] * random.uniform(0.3, 0.7), 4)
 
+        orch_pattern = scenario.get("orchestration_pattern", "native")
         result = {
             "original_task": scenario["description"],
             "subtasks": subtasks,
             "execution_order": "sequential" if secondary_agent else "parallel",
+            "orchestration_pattern": orch_pattern,
+            "sdk_pattern_detail": scenario.get("sdk_pattern_detail", ""),
             "estimated_cost": estimated_cost,
             "complexity": "moderate" if scenario["budget"] < 3.0 else "complex",
             "task_type": scenario["task_type"],
@@ -286,9 +297,15 @@ def seed_demo_data() -> dict:
             )
             payments_created += 1
 
+    # Count SDK-orchestrated tasks
+    sdk_tasks = sum(
+        1 for s in DEMO_SCENARIOS
+        if s.get("orchestration_pattern", "").startswith("sdk_")
+    )
+
     logger.info(
-        "Demo seeded: %d tasks, %d payments, %d agents, %d GPT-4o responses",
-        tasks_created, payments_created, agents_registered, gpt4o_responses,
+        "Demo seeded: %d tasks (%d SDK-orchestrated), %d payments, %d agents, %d GPT-4o responses",
+        tasks_created, sdk_tasks, payments_created, agents_registered, gpt4o_responses,
     )
 
     return {
@@ -296,4 +313,5 @@ def seed_demo_data() -> dict:
         "payments_created": payments_created,
         "agents_registered": agents_registered,
         "gpt4o_responses": gpt4o_responses,
+        "sdk_orchestrated_tasks": sdk_tasks,
     }
