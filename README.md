@@ -111,6 +111,23 @@ Radar chart comparing Builder, Research, and External agents across Speed, Quali
 - **Demo mode** — auto-seeding with realistic data for live demonstrations
 - **Health checks** — system-wide and Azure-specific connectivity monitoring
 
+### Human-in-the-Loop (HITL)
+- **Approval gates** — expensive operations require human approval before proceeding
+- **Cost threshold** — configurable threshold (default $1.00 USDC) triggers approval workflow
+- **Dashboard integration** — approve/reject pending requests from the Governance page
+- **Audit trail** — all approvals, rejections, and auto-approvals are tracked
+- **Timeout management** — stale approval requests auto-expire after configurable timeout
+
+### Responsible AI
+- **Content safety** — resumes and job postings are screened for bias, PII, and inappropriate content
+- **Bias detection** — gender, age, ethnicity, disability, and religion bias indicators
+- **PII scanning** — detects SSNs, emails, phone numbers, credit cards in submitted content
+- **Job posting validation** — flags discriminatory language like "young and energetic" or "must be under 30"
+- **Bias reporting** — analyzes hiring patterns for potential bias with fairness scoring
+- **Safety scoring** — 0-1 safety score for all content passing through the pipeline
+
+> HireWire includes Responsible AI guardrails for resume screening and hiring decisions. Content safety checks help identify potential bias, PII exposure, and discriminatory language. These checks are advisory and should be supplemented with human review for production deployments.
+
 ### Learning System
 - **Feedback collection** — record task outcomes with quality scores
 - **Agent scoring** — composite performance scoring with confidence intervals
@@ -226,6 +243,25 @@ curl http://localhost:8000/demo
 | `/payments/balance/{agent_id}` | `GET` | Get agent's current USDC balance |
 | `/payments/ledger` | `GET` | Full payment audit trail (`?event_type=`, `?agent_id=`, `?task_id=`) |
 
+### Human-in-the-Loop (HITL)
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/approvals/pending` | `GET` | List pending approval requests |
+| `/approvals/all` | `GET` | List all approval requests |
+| `/approvals/stats` | `GET` | Approval gate statistics |
+| `/approvals/{id}/status` | `GET` | Check approval request status |
+| `/approvals/{id}/approve` | `POST` | Approve a pending request |
+| `/approvals/{id}/reject` | `POST` | Reject a pending request |
+
+### Responsible AI
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/responsible-ai/check-resume` | `POST` | Check resume for bias, PII, safety |
+| `/responsible-ai/check-posting` | `POST` | Check job posting for discrimination |
+| `/responsible-ai/score` | `POST` | Get safety score (0-1) for text |
+| `/responsible-ai/bias-report` | `GET` | Bias analysis from hiring history |
+| `/responsible-ai/status` | `GET` | Content safety statistics |
+
 ### Metrics & Analytics
 | Endpoint | Method | Description |
 |----------|--------|-------------|
@@ -268,6 +304,8 @@ hirewire/
 │   ├── api/                 # FastAPI server + dashboard
 │   ├── metrics/             # Collection, cost analysis, ROI calculation
 │   ├── learning/            # Feedback, scoring, Thompson sampling optimizer
+│   ├── hitl/                # Human-in-the-Loop approval gates
+│   ├── responsible_ai/      # Content safety, bias detection, fairness monitoring
 │   ├── demo/                # Demo runner, data seeder
 │   ├── mcp_servers/         # Registry MCP, Payment Hub MCP, A2A, Tool servers
 │   ├── mcp_server.py        # Standalone MCP server (stdio + SSE)

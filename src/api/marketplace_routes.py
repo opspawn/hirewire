@@ -248,16 +248,36 @@ async def get_marketplace_agent(agent_id: str):
 
 @router.post("/marketplace/hire", response_model=HireResponse, status_code=200)
 async def hire_agent(body: HireRequestBody):
-    """Hire an agent for a task. Triggers x402 escrow payment flow."""
+    """Hire an agent for a task. Triggers x402 escrow payment flow.
+
+    If the budget exceeds the HITL cost threshold, an approval request
+    is created and must be approved before the hire proceeds.
+    """
+    from src.hitl import get_approval_gate
+
+    gate = get_approval_gate()
     request = HireRequest(
         description=body.description,
         required_skills=body.required_skills,
         budget=body.budget,
     )
 
+    # HITL gate: check if approval is required
+    approval_id, requires_wait = gate.process_action(
+        action="marketplace_hire",
+        cost_usdc=body.budget,
+        details={
+            "description": body.description,
+            "required_skills": body.required_skills,
+            "budget": body.budget,
+        },
+        description=f"Hire agent for: {body.description[:100]}",
+        requester="marketplace",
+    )
+
     result = _hiring_manager.hire(request)
 
-    return HireResponse(
+    response = HireResponse(
         task_id=result.task_id,
         status=result.status,
         agent_id=result.agent_id,
@@ -268,6 +288,8 @@ async def hire_agent(body: HireRequestBody):
         error=result.error,
         budget_remaining=result.budget_remaining,
     )
+
+    return response
 
 
 @router.get("/marketplace/hire/{task_id}/status", response_model=HireStatusResponse)

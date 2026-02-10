@@ -60,6 +60,14 @@ app = FastAPI(
 from src.api.marketplace_routes import router as marketplace_router
 app.include_router(marketplace_router)
 
+# Mount HITL approval routes
+from src.api.hitl_routes import router as hitl_router
+app.include_router(hitl_router)
+
+# Mount Responsible AI routes
+from src.api.responsible_ai_routes import router as rai_router
+app.include_router(rai_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -208,8 +216,14 @@ async def _execute_task(task_id: str, description: str, budget: float) -> None:
     storage.update_task_status(task_id, "running")
     t0 = time.time()
     try:
+        # 0. Responsible AI: content safety check
+        from src.responsible_ai import get_safety_checker
+        safety = get_safety_checker()
+        safety_result = safety.get_safety_score(description)
+
         # 1. CEO analyzes the task
         analysis = await analyze_task(description)
+        analysis["safety_score"] = safety_result
 
         # 2. Route to appropriate agent
         primary_agent = _detect_agent(description)
@@ -228,6 +242,17 @@ async def _execute_task(task_id: str, description: str, budget: float) -> None:
         analysis["assigned_agent"] = primary_agent
         analysis["model"] = "gpt-4o" if gpt_response else "mock"
         analysis["response_time_ms"] = round(elapsed_ms, 0)
+
+        # 4b. HITL gate for expensive operations
+        from src.hitl import get_approval_gate
+        hitl_gate = get_approval_gate()
+        approval_id, _ = hitl_gate.process_action(
+            action="task_execution",
+            cost_usdc=estimated_cost,
+            details={"task_id": task_id, "agent": primary_agent},
+            description=f"Execute task: {description[:80]}",
+        )
+        analysis["hitl_approval_id"] = approval_id
 
         # 5. Record budget and payment
         if estimated_cost > 0:

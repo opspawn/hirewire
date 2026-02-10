@@ -250,6 +250,11 @@
         <div class="nav-section-label">Intelligence</div>
         <div class="nav-item" data-page="metrics" onclick="navigateTo('metrics')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>Metrics</div>
       </div>
+      <div class="nav-section">
+        <div class="nav-section-label">Governance</div>
+        <div class="nav-item" data-page="approvals" onclick="navigateTo('approvals')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Approvals<span class="nav-badge" id="nav-approval-count">0</span></div>
+        <div class="nav-item" data-page="safety" onclick="navigateTo('safety')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Responsible AI</div>
+      </div>
     </nav>
     <div class="sidebar-footer"><div class="system-status"><div class="status-dot" id="sidebar-status-dot"></div><span id="sidebar-status-text">connecting...</span></div></div>
   </aside>
@@ -336,6 +341,47 @@
           <div class="card"><div class="card-header"><span class="card-title">Spending by Agent</span></div><div class="card-body"><div class="chart-container"><canvas id="spend-by-agent-chart"></canvas></div></div></div>
         </div>
       </div>
+      <!-- APPROVALS (HITL) -->
+      <div class="page" id="page-approvals">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">Pending</div><div class="stat-value" style="color:var(--yellow)" id="hitl-pending">--</div></div>
+          <div class="stat-card"><div class="stat-label">Approved</div><div class="stat-value green" id="hitl-approved">--</div></div>
+          <div class="stat-card"><div class="stat-label">Rejected</div><div class="stat-value" style="color:var(--red)" id="hitl-rejected">--</div></div>
+          <div class="stat-card"><div class="stat-label">Auto-Approved</div><div class="stat-value accent" id="hitl-auto">--</div></div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><div class="card-header"><span class="card-title">Pending Approvals</span><span style="font-size:11px;color:var(--text-muted)">Human-in-the-Loop</span></div><div class="card-body" id="hitl-pending-list" style="max-height:400px;overflow-y:auto"><div class="empty-state">No pending approvals</div></div></div>
+          <div class="card"><div class="card-header"><span class="card-title">Approval History</span></div><div class="card-body-flush" id="hitl-history" style="max-height:400px;overflow-y:auto"><div class="empty-state">No approval history</div></div></div>
+        </div>
+      </div>
+      <!-- RESPONSIBLE AI -->
+      <div class="page" id="page-safety">
+        <div class="stat-grid">
+          <div class="stat-card"><div class="stat-label">Items Checked</div><div class="stat-value accent" id="rai-checked">--</div></div>
+          <div class="stat-card"><div class="stat-label">Flagged</div><div class="stat-value" style="color:var(--yellow)" id="rai-flagged">--</div></div>
+          <div class="stat-card"><div class="stat-label">Blocked</div><div class="stat-value" style="color:var(--red)" id="rai-blocked">--</div></div>
+          <div class="stat-card"><div class="stat-label">Fairness Score</div><div class="stat-value green" id="rai-fairness">--</div></div>
+        </div>
+        <div class="grid-2">
+          <div class="card"><div class="card-header"><span class="card-title">Content Safety Status</span></div><div class="card-body" id="rai-status-panel">
+            <div class="detail-section">
+              <div class="detail-row"><span class="label">Resumes Checked</span><span class="value" id="rai-resumes">0</span></div>
+              <div class="detail-row"><span class="label">Job Postings Checked</span><span class="value" id="rai-postings">0</span></div>
+              <div class="detail-row"><span class="label">Safe</span><span class="value" style="color:var(--green)" id="rai-safe">0</span></div>
+              <div class="detail-row"><span class="label">Warnings</span><span class="value" style="color:var(--yellow)" id="rai-warnings">0</span></div>
+              <div class="detail-row"><span class="label">Flagged Rate</span><span class="value" id="rai-flag-rate">0%</span></div>
+            </div>
+          </div></div>
+          <div class="card"><div class="card-header"><span class="card-title">Bias Report</span></div><div class="card-body" id="rai-bias-panel">
+            <div class="detail-section">
+              <div class="detail-row"><span class="label">Total Decisions</span><span class="value" id="rai-decisions">0</span></div>
+              <div class="detail-row"><span class="label">Flagged Decisions</span><span class="value" id="rai-flagged-decisions">0</span></div>
+              <div id="rai-bias-indicators"></div>
+              <div id="rai-recommendations" style="margin-top:12px"></div>
+            </div>
+          </div></div>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -393,12 +439,14 @@ function navigateTo(page){
   currentPage=page;
   document.querySelectorAll('.nav-item').forEach(function(el){el.classList.toggle('active',el.dataset.page===page)});
   document.querySelectorAll('.page').forEach(function(el){el.classList.toggle('active',el.id==='page-'+page)});
-  var titles={overview:'Overview',agents:'Agents',tasks:'Tasks',payments:'Payments',metrics:'Metrics'};
+  var titles={overview:'Overview',agents:'Agents',tasks:'Tasks',payments:'Payments',metrics:'Metrics',approvals:'Approvals (HITL)',safety:'Responsible AI'};
   document.getElementById('page-title').textContent=titles[page]||page;
   if(page==='agents')renderAgentsPage();
   if(page==='tasks')renderTasksPage();
   if(page==='payments')renderPaymentsPage();
   if(page==='metrics')renderMetricsPage();
+  if(page==='approvals')renderApprovalsPage();
+  if(page==='safety')renderSafetyPage();
 }
 function openTaskModal(){document.getElementById('task-modal').classList.add('active');document.getElementById('modal-task-input').focus();}
 function closeTaskModal(){document.getElementById('task-modal').classList.remove('active');}
@@ -456,6 +504,10 @@ async function refreshOverview(){
       return'<div class="activity-item"><div class="activity-icon '+a.type+'">'+a.icon+'</div><div class="activity-text">'+a.text+'</div><div class="activity-time">'+a.time+'</div></div>';
     }).join('');
   }
+
+  // Update HITL approval count in nav
+  var hitlStats=await fetchJSON('/approvals/stats');
+  if(hitlStats){document.getElementById('nav-approval-count').textContent=hitlStats.pending}
 
   // Overview perf chart
   if(stats&&stats.agent_spend){renderOverviewChart(stats.agent_spend)}
@@ -679,6 +731,70 @@ async function runLiveDemo(){
     liveDemoRunning=false;
     btn.disabled=false;
     btn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>Live Demo';
+  }
+}
+
+// ── APPROVALS (HITL) ──
+async function renderApprovalsPage(){
+  var stats=await fetchJSON('/approvals/stats');
+  var pending=await fetchJSON('/approvals/pending');
+  var all=await fetchJSON('/approvals/all');
+  if(stats){
+    document.getElementById('hitl-pending').textContent=stats.pending;
+    document.getElementById('hitl-approved').textContent=stats.approved;
+    document.getElementById('hitl-rejected').textContent=stats.rejected;
+    document.getElementById('hitl-auto').textContent=stats.auto_approved;
+    document.getElementById('nav-approval-count').textContent=stats.pending;
+  }
+  if(pending&&pending.length>0){
+    document.getElementById('hitl-pending-list').innerHTML=pending.map(function(r){
+      return'<div style="padding:12px;border-bottom:1px solid var(--border)"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><span style="font-weight:600;color:var(--text)">'+r.action+'</span><span class="badge badge-yellow">pending</span></div><div style="font-size:12px;color:var(--text-muted);margin-bottom:8px">'+r.description+'</div><div style="font-size:12px;color:var(--text-secondary);margin-bottom:8px">Cost: <strong style="color:var(--green)">$'+r.cost_usdc.toFixed(2)+' USDC</strong></div><div style="display:flex;gap:8px"><button class="btn btn-sm btn-success" onclick="approveRequest(\''+r.request_id+'\')">Approve</button><button class="btn btn-sm" style="border-color:var(--red);color:var(--red)" onclick="rejectRequest(\''+r.request_id+'\')">Reject</button></div></div>';
+    }).join('');
+  }else{
+    document.getElementById('hitl-pending-list').innerHTML='<div class="empty-state">No pending approvals</div>';
+  }
+  if(all&&all.length>0){
+    var html='<table class="data-table"><thead><tr><th>Action</th><th>Cost</th><th>Status</th><th>Reviewer</th><th>Time</th></tr></thead><tbody>';
+    all.forEach(function(r){
+      var sb=r.status==='approved'?'badge-green':r.status==='rejected'?'badge-red':r.status==='auto_approved'?'badge-blue':r.status==='pending'?'badge-yellow':'badge-muted';
+      html+='<tr><td style="color:var(--text);font-weight:500">'+r.action+'</td><td style="color:var(--green)">$'+r.cost_usdc.toFixed(2)+'</td><td><span class="badge '+sb+'">'+r.status+'</span></td><td>'+r.reviewer+'</td><td>'+fmtDate(r.created_at)+'</td></tr>';
+    });
+    html+='</tbody></table>';
+    document.getElementById('hitl-history').innerHTML=html;
+  }
+}
+async function approveRequest(id){
+  try{var r=await fetch(API+'/approvals/'+id+'/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:'dashboard_user',reason:'Approved via dashboard'})});if(r.ok){toast('Approved','success');renderApprovalsPage()}else toast('Failed','error')}catch(e){toast('Error','error')}
+}
+async function rejectRequest(id){
+  try{var r=await fetch(API+'/approvals/'+id+'/reject',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({reviewer:'dashboard_user',reason:'Rejected via dashboard'})});if(r.ok){toast('Rejected','info');renderApprovalsPage()}else toast('Failed','error')}catch(e){toast('Error','error')}
+}
+
+// ── RESPONSIBLE AI ──
+async function renderSafetyPage(){
+  var status=await fetchJSON('/responsible-ai/status');
+  var bias=await fetchJSON('/responsible-ai/bias-report');
+  if(status){
+    document.getElementById('rai-checked').textContent=status.total_checked;
+    document.getElementById('rai-flagged').textContent=status.flagged;
+    document.getElementById('rai-blocked').textContent=status.blocked;
+    document.getElementById('rai-resumes').textContent=status.resumes_checked;
+    document.getElementById('rai-postings').textContent=status.job_postings_checked;
+    document.getElementById('rai-safe').textContent=status.safe;
+    document.getElementById('rai-warnings').textContent=status.warnings;
+    document.getElementById('rai-flag-rate').textContent=(status.flagged_rate*100).toFixed(1)+'%';
+  }
+  if(bias){
+    document.getElementById('rai-fairness').textContent=(bias.fairness_score*100).toFixed(0)+'%';
+    document.getElementById('rai-decisions').textContent=bias.total_decisions;
+    document.getElementById('rai-flagged-decisions').textContent=bias.flagged_decisions;
+    var indHtml='';
+    Object.keys(bias.bias_indicators).forEach(function(k){
+      indHtml+='<div class="detail-row"><span class="label">'+k+'</span><span class="value">'+bias.bias_indicators[k]+' indicators</span></div>';
+    });
+    document.getElementById('rai-bias-indicators').innerHTML=indHtml;
+    var recHtml=bias.recommendations.map(function(r){return'<div style="font-size:12px;color:var(--text-secondary);padding:4px 0;border-bottom:1px solid var(--border)">'+r+'</div>'}).join('');
+    document.getElementById('rai-recommendations').innerHTML=recHtml;
   }
 }
 
