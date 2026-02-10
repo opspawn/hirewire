@@ -312,6 +312,41 @@ async def health():
     )
 
 
+@app.get("/health/azure")
+async def health_azure():
+    """Deep health check that verifies Azure service connectivity."""
+    from src.framework.azure_llm import azure_available, get_azure_llm
+    from src.persistence.cosmos import cosmos_available, get_cosmos_store
+
+    checks: dict[str, Any] = {}
+
+    # Azure OpenAI check
+    if azure_available():
+        try:
+            provider = get_azure_llm()
+            checks["azure_openai"] = provider.check_connection()
+        except Exception as exc:
+            checks["azure_openai"] = {"connected": False, "error": str(exc)}
+    else:
+        checks["azure_openai"] = {"connected": False, "error": "Not configured"}
+
+    # Cosmos DB check
+    if cosmos_available():
+        try:
+            store = get_cosmos_store()
+            checks["cosmos_db"] = store.check_connection()
+        except Exception as exc:
+            checks["cosmos_db"] = {"connected": False, "error": str(exc)}
+    else:
+        checks["cosmos_db"] = {"connected": False, "error": "Not configured"}
+
+    all_connected = all(c.get("connected", False) for c in checks.values())
+    return {
+        "status": "healthy" if all_connected else "degraded",
+        "services": checks,
+    }
+
+
 # ── Metrics endpoints ──────────────────────────────────────────────────────
 
 

@@ -24,6 +24,7 @@ from src.framework.orchestrator import (
 )
 from src.framework.mcp_tools import MCPToolDescriptor, MCPToolRegistry
 from src.framework.a2a import A2AAgentCard, A2AServer, A2AClient, A2ATaskBatch
+from src.framework.azure_llm import AzureLLMProvider, get_azure_llm, azure_available
 
 __all__ = [
     "AgentFrameworkAgent",
@@ -43,4 +44,7 @@ __all__ = [
     "A2AServer",
     "A2AClient",
     "A2ATaskBatch",
+    "AzureLLMProvider",
+    "get_azure_llm",
+    "azure_available",
 ]

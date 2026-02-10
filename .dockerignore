@@ -1,0 +1,11 @@
+.git
+.env
+.env.example
+__pycache__
+*.pyc
+tests/
+*.md
+.gitignore
+azure-setup.sh
+test_azure_connection.py
+demo.py

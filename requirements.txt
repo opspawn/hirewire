@@ -16,6 +16,9 @@ opentelemetry-sdk>=1.30.0
 azure-ai-inference>=1.0.0b6
 azure-core>=1.33.0
 
+# Azure OpenAI SDK
+openai>=1.50.0
+
 # Model Context Protocol
 mcp>=1.1.0
 
@@ -30,7 +33,7 @@ httpx>=0.28.0
 
 # Crypto/Payments (x402 support)
 web3>=7.6.0
-eth-account>=0.14.0
+eth-account>=0.13.0
 
 # Web Search
 ddgs>=9.0.0
