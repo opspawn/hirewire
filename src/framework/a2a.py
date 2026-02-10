@@ -161,12 +161,78 @@ class A2AServer:
         """List all tasks."""
         return list(self._tasks.values())
 
+    async def handle_batch(
+        self,
+        descriptions: list[str],
+        from_agent: str = "anonymous",
+    ) -> A2ATaskBatch:
+        """Handle a batch of incoming task requests.
+
+        Processes all tasks concurrently and returns a batch result.
+        """
+        import asyncio
+
+        tasks = []
+        for desc in descriptions:
+            task = A2ATask(
+                description=desc,
+                from_agent=from_agent,
+                to_agent=self._agent.name,
+            )
+            self._tasks[task.task_id] = task
+            tasks.append(task)
+
+        batch = A2ATaskBatch(tasks)
+
+        async def _process(task: A2ATask) -> None:
+            task.status = "running"
+            try:
+                result = await self._agent.invoke(
+                    task.description,
+                    context={"from_agent": task.from_agent, "protocol": "a2a", "batch": batch.batch_id},
+                )
+                task.status = "completed"
+                task.result = result
+                task.completed_at = time.time()
+            except Exception as exc:
+                task.status = "failed"
+                task.result = {"error": str(exc)}
+                task.completed_at = time.time()
+
+        await asyncio.gather(*[_process(t) for t in tasks])
+
+        if batch.total_count == 0:
+            batch.status = "completed"
+        elif batch.failed_count == batch.total_count:
+            batch.status = "failed"
+        elif batch.failed_count > 0:
+            batch.status = "partial"
+        else:
+            batch.status = "completed"
+
+        return batch
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel a pending or running task.
+
+        Returns True if the task was found and cancelled.
+        """
+        task = self._tasks.get(task_id)
+        if task is None:
+            return False
+        if task.status in ("pending", "running"):
+            task.status = "cancelled"
+            task.completed_at = time.time()
+            return True
+        return False
+
     def dispatch_jsonrpc(self, request_body: dict[str, Any]) -> dict[str, Any]:
         """Dispatch a JSON-RPC 2.0 request.
 
         Supported methods:
         - tasks/send: Submit a task to the agent
         - tasks/get: Check task status
+        - tasks/cancel: Cancel a pending/running task
         - agents/info: Get agent card
         """
         if not isinstance(request_body, dict):
@@ -203,6 +269,11 @@ class A2AServer:
             self._tasks[task.task_id] = task
             return self._result(asdict(task), req_id)
 
+        if method == "tasks/cancel":
+            task_id = params.get("task_id", "")
+            cancelled = self.cancel_task(task_id)
+            return self._result({"task_id": task_id, "cancelled": cancelled}, req_id)
+
         return self._error(-32601, f"Method not found: {method}", req_id)
 
     @staticmethod
@@ -212,6 +283,35 @@ class A2AServer:
     @staticmethod
     def _error(code: int, message: str, req_id: Any = None) -> dict[str, Any]:
         return {"jsonrpc": "2.0", "error": {"code": code, "message": message}, "id": req_id}
+
+
+class A2ATaskBatch:
+    """Represents a batch of A2A tasks submitted together."""
+
+    batch_id: str
+    tasks: list[A2ATask]
+    status: str  # pending, partial, completed, failed
+
+    def __init__(self, tasks: list[A2ATask] | None = None) -> None:
+        self.batch_id = f"batch_{uuid.uuid4().hex[:12]}"
+        self.tasks = tasks or []
+        self.status = "pending"
+
+    @property
+    def completed_count(self) -> int:
+        return sum(1 for t in self.tasks if t.status == "completed")
+
+    @property
+    def failed_count(self) -> int:
+        return sum(1 for t in self.tasks if t.status == "failed")
+
+    @property
+    def total_count(self) -> int:
+        return len(self.tasks)
+
+    @property
+    def is_complete(self) -> bool:
+        return all(t.status in ("completed", "failed", "cancelled") for t in self.tasks)
 
 
 class A2AClient:

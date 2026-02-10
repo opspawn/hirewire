@@ -341,6 +341,68 @@ API_CALL_TOOL = MCPToolDescriptor(
     _execute=_api_call_handler,
 )
 
+async def _code_execution_handler(args: dict[str, Any]) -> dict[str, Any]:
+    """Execute code in a sandboxed environment (mock implementation)."""
+    language = args.get("language", "python")
+    code = args.get("code", "")
+    return {
+        "status": "ok",
+        "language": language,
+        "output": f"Mock execution of {language} code ({len(code)} chars)",
+        "exit_code": 0,
+        "execution_time_ms": 42,
+    }
+
+
+async def _data_store_handler(args: dict[str, Any]) -> dict[str, Any]:
+    """Store or retrieve key-value data (mock implementation)."""
+    operation = args.get("operation", "get")
+    key = args.get("key", "")
+    value = args.get("value")
+    if operation == "set":
+        return {"status": "ok", "operation": "set", "key": key, "stored": True}
+    elif operation == "get":
+        return {"status": "ok", "operation": "get", "key": key, "value": f"mock_value_for_{key}"}
+    elif operation == "delete":
+        return {"status": "ok", "operation": "delete", "key": key, "deleted": True}
+    elif operation == "list":
+        return {"status": "ok", "operation": "list", "keys": [f"key_{i}" for i in range(3)]}
+    return {"status": "error", "error": f"Unknown operation: {operation}"}
+
+
+CODE_EXECUTION_TOOL = MCPToolDescriptor(
+    name="code_execution",
+    description="Execute code in a sandboxed environment supporting Python, JavaScript, and shell",
+    parameters={
+        "type": "object",
+        "properties": {
+            "language": {"type": "string", "description": "Language: python, javascript, shell"},
+            "code": {"type": "string", "description": "Code to execute"},
+            "timeout_ms": {"type": "integer", "description": "Max execution time in ms (default 30000)"},
+        },
+        "required": ["language", "code"],
+    },
+    tags=["code", "execution", "sandbox"],
+    _execute=_code_execution_handler,
+)
+
+DATA_STORE_TOOL = MCPToolDescriptor(
+    name="data_store",
+    description="Key-value data store for persisting agent state and sharing data between agents",
+    parameters={
+        "type": "object",
+        "properties": {
+            "operation": {"type": "string", "description": "Operation: get, set, delete, list"},
+            "key": {"type": "string", "description": "Key to store/retrieve"},
+            "value": {"description": "Value to store (for set operations)"},
+        },
+        "required": ["operation"],
+    },
+    tags=["storage", "data", "state"],
+    _execute=_data_store_handler,
+)
+
+
 # All pre-built tools
 BUILTIN_TOOLS = [
     SCREENSHOT_TOOL,
@@ -349,6 +411,8 @@ BUILTIN_TOOLS = [
     WEB_SEARCH_TOOL,
     FILE_OPERATION_TOOL,
     API_CALL_TOOL,
+    CODE_EXECUTION_TOOL,
+    DATA_STORE_TOOL,
 ]
 
 

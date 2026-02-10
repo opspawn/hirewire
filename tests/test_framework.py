@@ -24,7 +24,11 @@ from src.framework.orchestrator import (
     SequentialOrchestrator,
     ConcurrentOrchestrator,
     HandoffOrchestrator,
+    RouterOrchestrator,
     OrchestratorResult,
+    PipelineBuilder,
+    Pipeline,
+    keyword_router,
 )
 from src.framework.mcp_tools import (
     MCPToolDescriptor,
@@ -35,10 +39,12 @@ from src.framework.mcp_tools import (
     WEB_SEARCH_TOOL,
     FILE_OPERATION_TOOL,
     API_CALL_TOOL,
+    CODE_EXECUTION_TOOL,
+    DATA_STORE_TOOL,
     BUILTIN_TOOLS,
     create_default_registry,
 )
-from src.framework.a2a import A2AAgentCard, A2AServer, A2AClient, A2ATask
+from src.framework.a2a import A2AAgentCard, A2AServer, A2AClient, A2ATask, A2ATaskBatch
 from src.framework.agents.researcher import create_researcher_agent
 from src.framework.agents.analyst import create_analyst_agent
 from src.framework.agents.executor import create_executor_agent
@@ -596,7 +602,7 @@ class TestMCPToolRegistry:
 
 class TestBuiltinMCPTools:
     def test_builtin_tools_count(self):
-        assert len(BUILTIN_TOOLS) == 6
+        assert len(BUILTIN_TOOLS) == 8
 
     @pytest.mark.asyncio
     async def test_screenshot_tool(self):
@@ -637,9 +643,11 @@ class TestBuiltinMCPTools:
 
     def test_create_default_registry(self):
         reg = create_default_registry()
-        assert len(reg.list_all()) == 6
+        assert len(reg.list_all()) == 8
         assert reg.get("screenshot") is not None
         assert reg.get("web_search") is not None
+        assert reg.get("code_execution") is not None
+        assert reg.get("data_store") is not None
 
 
 # ===================================================================
@@ -975,3 +983,483 @@ class TestEdgeCases:
         agent_names = [r["agent"] for r in result.agent_results]
         for i in range(5):
             assert f"Agent{i}" in agent_names
+
+
+# ===================================================================
+# 19. Router Orchestrator
+# ===================================================================
+
+
+class TestRouterOrchestrator:
+    @pytest.mark.asyncio
+    async def test_router_basic(self):
+        researcher = AgentFrameworkAgent(
+            name="Researcher",
+            description="Researches topics from the web",
+            instructions="Research.",
+            chat_client=_mock_client(),
+        )
+        builder = AgentFrameworkAgent(
+            name="Builder",
+            description="Builds code and deploys services",
+            instructions="Build.",
+            chat_client=_mock_client(),
+        )
+        orch = RouterOrchestrator([researcher, builder])
+        result = await orch.run("research the latest AI trends")
+        assert result.pattern == "router"
+        assert result.status == "completed"
+        assert result.metadata["routed_to"] == "Researcher"
+
+    @pytest.mark.asyncio
+    async def test_router_routes_to_builder(self):
+        researcher = AgentFrameworkAgent(
+            name="Researcher",
+            description="Researches topics from the web",
+            instructions="Research.",
+            chat_client=_mock_client(),
+        )
+        builder = AgentFrameworkAgent(
+            name="Builder",
+            description="Builds code and deploys applications",
+            instructions="Build.",
+            chat_client=_mock_client(),
+        )
+        orch = RouterOrchestrator([researcher, builder])
+        # Use keywords that strongly match Builder's description
+        result = await orch.run("builder should builds code deploys applications")
+        assert result.metadata["routed_to"] == "Builder"
+
+    @pytest.mark.asyncio
+    async def test_router_empty_agents(self):
+        orch = RouterOrchestrator([])
+        result = await orch.run("task")
+        assert result.status == "failed"
+
+    @pytest.mark.asyncio
+    async def test_router_fallback_to_first(self):
+        """When no keyword match, fallback to first agent."""
+        a = _make_agent("Alpha")
+        b = _make_agent("Beta")
+        orch = RouterOrchestrator([a, b])
+        result = await orch.run("xyzzy gibberish")
+        assert result.status == "completed"
+        assert result.metadata["routed_to"] == "Alpha"
+
+    @pytest.mark.asyncio
+    async def test_router_custom_routing_fn(self):
+        """Use a custom routing function."""
+        a = _make_agent("Alice")
+        b = _make_agent("Bob")
+
+        def always_bob(task, agents):
+            for ag in agents:
+                if ag.name == "Bob":
+                    return ag
+            return None
+
+        orch = RouterOrchestrator([a, b], routing_fn=always_bob)
+        result = await orch.run("any task")
+        assert result.metadata["routed_to"] == "Bob"
+
+    @pytest.mark.asyncio
+    async def test_router_history_tracking(self):
+        orch = RouterOrchestrator([_make_agent("X")])
+        await orch.run("task 1")
+        await orch.run("task 2")
+        assert len(orch.history) == 2
+
+    def test_keyword_router_function(self):
+        """Test the standalone keyword_router function."""
+        researcher = AgentFrameworkAgent(
+            name="Researcher",
+            description="Researches topics from the web and analyzes data",
+            instructions="...",
+            chat_client=_mock_client(),
+        )
+        builder = AgentFrameworkAgent(
+            name="Builder",
+            description="Builds and deploys code",
+            instructions="...",
+            chat_client=_mock_client(),
+        )
+        result = keyword_router("research and analyze market data", [researcher, builder])
+        assert result is not None
+        assert result.name == "Researcher"
+
+    def test_keyword_router_returns_none_on_empty(self):
+        result = keyword_router("task", [])
+        assert result is None
+
+
+# ===================================================================
+# 20. Pipeline Builder
+# ===================================================================
+
+
+class TestPipelineBuilder:
+    def test_builder_step_count(self):
+        pb = PipelineBuilder()
+        pb.add_step("s1", _make_agent("A"))
+        pb.add_step("s2", _make_agent("B"))
+        assert pb.step_count == 2
+
+    def test_builder_concurrent_step(self):
+        pb = PipelineBuilder()
+        pb.add_concurrent_step("parallel", [_make_agent("A"), _make_agent("B")])
+        assert pb.step_count == 1
+
+    def test_builder_router_step(self):
+        pb = PipelineBuilder()
+        pb.add_router_step("route", [_make_agent("A"), _make_agent("B")])
+        assert pb.step_count == 1
+
+    def test_builder_chaining(self):
+        """Fluent chaining returns self."""
+        pb = (
+            PipelineBuilder()
+            .add_step("s1", _make_agent("A"))
+            .add_concurrent_step("s2", [_make_agent("B"), _make_agent("C")])
+            .add_step("s3", _make_agent("D"))
+        )
+        assert pb.step_count == 3
+
+    def test_builder_builds_pipeline(self):
+        pb = PipelineBuilder().add_step("s1", _make_agent("A"))
+        pipeline = pb.build()
+        assert isinstance(pipeline, Pipeline)
+        assert pipeline.step_count == 1
+
+    @pytest.mark.asyncio
+    async def test_pipeline_sequential_steps(self):
+        pipeline = (
+            PipelineBuilder()
+            .add_step("research", _make_agent("Researcher"))
+            .add_step("analyze", _make_agent("Analyst"))
+            .build()
+        )
+        result = await pipeline.run("Analyze the AI market")
+        assert result.status == "completed"
+        assert result.pattern == "pipeline"
+        assert len(result.agent_results) == 2
+        assert result.metadata["steps_completed"] == 2
+
+    @pytest.mark.asyncio
+    async def test_pipeline_with_concurrent_step(self):
+        pipeline = (
+            PipelineBuilder()
+            .add_step("plan", _make_agent("Planner"))
+            .add_concurrent_step("parallel_work", [_make_agent("A"), _make_agent("B")])
+            .add_step("merge", _make_agent("Merger"))
+            .build()
+        )
+        result = await pipeline.run("Build a report")
+        assert result.status == "completed"
+        # 1 (plan) + 2 (parallel A & B) + 1 (merge) = 4 step results
+        assert len(result.agent_results) == 4
+
+    @pytest.mark.asyncio
+    async def test_pipeline_with_router_step(self):
+        researcher = AgentFrameworkAgent(
+            name="Researcher",
+            description="Researches topics from the web",
+            instructions="Research.",
+            chat_client=_mock_client(),
+        )
+        builder = AgentFrameworkAgent(
+            name="Builder",
+            description="Builds and deploys code",
+            instructions="Build.",
+            chat_client=_mock_client(),
+        )
+        pipeline = (
+            PipelineBuilder()
+            .add_router_step("route", [researcher, builder])
+            .build()
+        )
+        result = await pipeline.run("research AI trends")
+        assert result.status == "completed"
+        assert result.agent_results[0].get("routed_to") is not None
+
+    @pytest.mark.asyncio
+    async def test_pipeline_empty(self):
+        pipeline = PipelineBuilder().build()
+        result = await pipeline.run("task")
+        assert result.status == "failed"
+        assert "Empty pipeline" in result.metadata.get("error", "")
+
+    @pytest.mark.asyncio
+    async def test_pipeline_single_step(self):
+        pipeline = PipelineBuilder().add_step("only", _make_agent("Solo")).build()
+        result = await pipeline.run("single step task")
+        assert result.status == "completed"
+        assert len(result.agent_results) == 1
+        assert result.final_output != ""
+
+
+# ===================================================================
+# 21. New MCP Tools: Code Execution and Data Store
+# ===================================================================
+
+
+class TestNewMCPTools:
+    @pytest.mark.asyncio
+    async def test_code_execution_tool(self):
+        result = await CODE_EXECUTION_TOOL.execute({"language": "python", "code": "print('hello')"})
+        assert result["status"] == "ok"
+        assert result["language"] == "python"
+        assert result["exit_code"] == 0
+        assert result["execution_time_ms"] > 0
+
+    @pytest.mark.asyncio
+    async def test_code_execution_javascript(self):
+        result = await CODE_EXECUTION_TOOL.execute({"language": "javascript", "code": "console.log('hi')"})
+        assert result["status"] == "ok"
+        assert result["language"] == "javascript"
+
+    @pytest.mark.asyncio
+    async def test_data_store_set(self):
+        result = await DATA_STORE_TOOL.execute({"operation": "set", "key": "name", "value": "test"})
+        assert result["status"] == "ok"
+        assert result["stored"] is True
+
+    @pytest.mark.asyncio
+    async def test_data_store_get(self):
+        result = await DATA_STORE_TOOL.execute({"operation": "get", "key": "name"})
+        assert result["status"] == "ok"
+        assert "mock_value_for_name" in result["value"]
+
+    @pytest.mark.asyncio
+    async def test_data_store_delete(self):
+        result = await DATA_STORE_TOOL.execute({"operation": "delete", "key": "name"})
+        assert result["status"] == "ok"
+        assert result["deleted"] is True
+
+    @pytest.mark.asyncio
+    async def test_data_store_list(self):
+        result = await DATA_STORE_TOOL.execute({"operation": "list"})
+        assert result["status"] == "ok"
+        assert isinstance(result["keys"], list)
+
+    @pytest.mark.asyncio
+    async def test_data_store_unknown_op(self):
+        result = await DATA_STORE_TOOL.execute({"operation": "upsert"})
+        assert result["status"] == "error"
+
+    def test_code_execution_tool_mcp_dict(self):
+        d = CODE_EXECUTION_TOOL.to_mcp_dict()
+        assert d["name"] == "code_execution"
+        assert "code" in d["tags"]
+
+    def test_data_store_tool_mcp_dict(self):
+        d = DATA_STORE_TOOL.to_mcp_dict()
+        assert d["name"] == "data_store"
+        assert "storage" in d["tags"]
+
+
+# ===================================================================
+# 22. A2A Batch Operations
+# ===================================================================
+
+
+class TestA2ABatchOperations:
+    def test_batch_creation(self):
+        batch = A2ATaskBatch()
+        assert batch.batch_id.startswith("batch_")
+        assert batch.total_count == 0
+        assert batch.status == "pending"
+
+    def test_batch_with_tasks(self):
+        tasks = [
+            A2ATask(description="task 1"),
+            A2ATask(description="task 2"),
+        ]
+        batch = A2ATaskBatch(tasks)
+        assert batch.total_count == 2
+        assert batch.completed_count == 0
+
+    def test_batch_is_complete(self):
+        t1 = A2ATask(description="t1")
+        t1.status = "completed"
+        t2 = A2ATask(description="t2")
+        t2.status = "failed"
+        batch = A2ATaskBatch([t1, t2])
+        assert batch.is_complete is True
+        assert batch.completed_count == 1
+        assert batch.failed_count == 1
+
+    def test_batch_not_complete(self):
+        t1 = A2ATask(description="t1")
+        t1.status = "completed"
+        t2 = A2ATask(description="t2")
+        t2.status = "running"
+        batch = A2ATaskBatch([t1, t2])
+        assert batch.is_complete is False
+
+    @pytest.mark.asyncio
+    async def test_server_handle_batch(self):
+        agent = _make_agent("BatchAgent")
+        server = A2AServer(agent)
+        batch = await server.handle_batch(
+            ["task 1", "task 2", "task 3"],
+            from_agent="tester",
+        )
+        assert batch.status == "completed"
+        assert batch.total_count == 3
+        assert batch.completed_count == 3
+        assert all(t.to_agent == "BatchAgent" for t in batch.tasks)
+
+    @pytest.mark.asyncio
+    async def test_server_handle_batch_single(self):
+        agent = _make_agent("SingleBatch")
+        server = A2AServer(agent)
+        batch = await server.handle_batch(["only task"])
+        assert batch.total_count == 1
+        assert batch.status == "completed"
+
+    @pytest.mark.asyncio
+    async def test_server_handle_batch_empty(self):
+        agent = _make_agent("EmptyBatch")
+        server = A2AServer(agent)
+        batch = await server.handle_batch([])
+        assert batch.total_count == 0
+        assert batch.status == "completed"
+
+
+# ===================================================================
+# 23. A2A Task Cancellation
+# ===================================================================
+
+
+class TestA2ATaskCancellation:
+    def test_cancel_pending_task(self):
+        agent = _make_agent("CancelAgent")
+        server = A2AServer(agent)
+        resp = server.dispatch_jsonrpc({
+            "jsonrpc": "2.0",
+            "method": "tasks/send",
+            "params": {"description": "cancellable task"},
+            "id": "1",
+        })
+        task_id = resp["result"]["task_id"]
+        cancelled = server.cancel_task(task_id)
+        assert cancelled is True
+        task = server.get_task(task_id)
+        assert task.status == "cancelled"
+
+    def test_cancel_nonexistent_task(self):
+        agent = _make_agent("X")
+        server = A2AServer(agent)
+        assert server.cancel_task("nonexistent") is False
+
+    def test_cancel_completed_task_fails(self):
+        agent = _make_agent("X")
+        server = A2AServer(agent)
+        resp = server.dispatch_jsonrpc({
+            "jsonrpc": "2.0",
+            "method": "tasks/send",
+            "params": {"description": "task"},
+            "id": "1",
+        })
+        task_id = resp["result"]["task_id"]
+        task = server.get_task(task_id)
+        task.status = "completed"
+        assert server.cancel_task(task_id) is False
+
+    def test_dispatch_cancel_method(self):
+        agent = _make_agent("CancelDispatch")
+        server = A2AServer(agent)
+        send_resp = server.dispatch_jsonrpc({
+            "jsonrpc": "2.0",
+            "method": "tasks/send",
+            "params": {"description": "test"},
+            "id": "1",
+        })
+        task_id = send_resp["result"]["task_id"]
+        cancel_resp = server.dispatch_jsonrpc({
+            "jsonrpc": "2.0",
+            "method": "tasks/cancel",
+            "params": {"task_id": task_id},
+            "id": "2",
+        })
+        assert cancel_resp["result"]["cancelled"] is True
+
+
+# ===================================================================
+# 24. Complex Multi-Agent Pipeline Integration
+# ===================================================================
+
+
+class TestComplexPipelineIntegration:
+    @pytest.mark.asyncio
+    async def test_research_analyze_execute_pipeline(self):
+        """Full 3-stage pipeline using pre-built agents."""
+        researcher = create_researcher_agent(chat_client=_mock_client())
+        analyst = create_analyst_agent(chat_client=_mock_client())
+        executor = create_executor_agent(chat_client=_mock_client())
+        pipeline = (
+            PipelineBuilder()
+            .add_step("research", researcher)
+            .add_step("analyze", analyst)
+            .add_step("execute", executor)
+            .build()
+        )
+        result = await pipeline.run("Build a competitive intelligence report")
+        assert result.status == "completed"
+        assert result.metadata["steps_completed"] == 3
+
+    @pytest.mark.asyncio
+    async def test_fan_out_fan_in_pipeline(self):
+        """Parallel research followed by analysis merge."""
+        r1 = create_researcher_agent(chat_client=_mock_client())
+        r2 = create_researcher_agent(chat_client=_mock_client())
+        analyst = create_analyst_agent(chat_client=_mock_client())
+        pipeline = (
+            PipelineBuilder()
+            .add_concurrent_step("parallel_research", [r1, r2])
+            .add_step("analyze", analyst)
+            .build()
+        )
+        result = await pipeline.run("Research AI and blockchain trends")
+        assert result.status == "completed"
+        # 2 parallel + 1 analyze = 3
+        assert len(result.agent_results) == 3
+
+    @pytest.mark.asyncio
+    async def test_router_with_prebuilt_agents(self):
+        """Router selects the right pre-built agent."""
+        researcher = create_researcher_agent(chat_client=_mock_client())
+        executor = create_executor_agent(chat_client=_mock_client())
+        orch = RouterOrchestrator([researcher, executor])
+        # Use keywords from executor description: "executes actions", "file operations", "API calls"
+        result = await orch.run("executes file operations and multi-step task execution")
+        assert result.status == "completed"
+        assert result.metadata["routed_to"] == "Executor"
+
+    @pytest.mark.asyncio
+    async def test_a2a_server_batch_with_prebuilt(self):
+        """A2A batch operations with pre-built agents."""
+        researcher = create_researcher_agent(chat_client=_mock_client())
+        server = A2AServer(researcher, "http://localhost:9001")
+        batch = await server.handle_batch([
+            "Research quantum computing",
+            "Research blockchain trends",
+            "Research AI safety",
+        ])
+        assert batch.status == "completed"
+        assert batch.total_count == 3
+        # All tasks should be tracked in server
+        assert len(server.list_tasks()) == 3
+
+    @pytest.mark.asyncio
+    async def test_pipeline_result_has_final_output(self):
+        """Pipeline final_output comes from last step."""
+        pipeline = (
+            PipelineBuilder()
+            .add_step("first", _make_agent("First"))
+            .add_step("last", _make_agent("Last"))
+            .build()
+        )
+        result = await pipeline.run("test")
+        assert result.final_output != ""
+        assert result.agent_results[-1]["agent"] == "Last"

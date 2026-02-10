@@ -17,10 +17,13 @@ from src.framework.orchestrator import (
     SequentialOrchestrator,
     ConcurrentOrchestrator,
     HandoffOrchestrator,
+    RouterOrchestrator,
     OrchestratorResult,
+    PipelineBuilder,
+    Pipeline,
 )
 from src.framework.mcp_tools import MCPToolDescriptor, MCPToolRegistry
-from src.framework.a2a import A2AAgentCard, A2AServer, A2AClient
+from src.framework.a2a import A2AAgentCard, A2AServer, A2AClient, A2ATaskBatch
 
 __all__ = [
     "AgentFrameworkAgent",
@@ -30,10 +33,14 @@ __all__ = [
     "SequentialOrchestrator",
     "ConcurrentOrchestrator",
     "HandoffOrchestrator",
+    "RouterOrchestrator",
     "OrchestratorResult",
+    "PipelineBuilder",
+    "Pipeline",
     "MCPToolDescriptor",
     "MCPToolRegistry",
     "A2AAgentCard",
     "A2AServer",
     "A2AClient",
+    "A2ATaskBatch",
 ]

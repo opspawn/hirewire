@@ -15,7 +15,7 @@ import asyncio
 import time
 import uuid
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Callable
 
 from src.framework.agent import AgentFrameworkAgent, AgentThread
 
@@ -312,3 +312,225 @@ class HandoffOrchestrator(Orchestrator):
                 best_match = specialist.name
 
         return best_match
+
+
+# ---------------------------------------------------------------------------
+# Router/Conditional Orchestrator
+# ---------------------------------------------------------------------------
+
+
+RoutingFn = Callable[[str, list[AgentFrameworkAgent]], AgentFrameworkAgent | None]
+
+
+def keyword_router(task: str, agents: list[AgentFrameworkAgent]) -> AgentFrameworkAgent | None:
+    """Default routing function: score agents by keyword overlap with task."""
+    task_lower = task.lower()
+    best: AgentFrameworkAgent | None = None
+    best_score = 0
+    for agent in agents:
+        desc_words = agent.description.lower().split()
+        score = sum(1 for w in desc_words if len(w) > 3 and w in task_lower)
+        name_words = agent.name.lower().split()
+        score += sum(2 for w in name_words if w in task_lower)
+        if score > best_score:
+            best_score = score
+            best = agent
+    return best
+
+
+class RouterOrchestrator(Orchestrator):
+    """Conditional/Router orchestration: route task to the best-fit agent.
+
+    Evaluates agents against the task using a routing function and sends
+    the task to the single most appropriate agent. Falls back to the
+    first agent if no match. Maps to Microsoft Agent Framework's
+    conditional routing pattern.
+    """
+
+    def __init__(
+        self,
+        agents: list[AgentFrameworkAgent] | None = None,
+        routing_fn: RoutingFn | None = None,
+    ) -> None:
+        super().__init__(agents)
+        self._routing_fn: RoutingFn = routing_fn or keyword_router
+
+    async def run(
+        self,
+        task: str,
+        thread: AgentThread | None = None,
+        **kwargs: Any,
+    ) -> OrchestratorResult:
+        result = OrchestratorResult(pattern="router", task=task)
+        result.status = "running"
+        t0 = time.time()
+
+        if not self._agents:
+            result.status = "failed"
+            result.metadata["error"] = "No agents configured"
+            result.elapsed_ms = (time.time() - t0) * 1000
+            self._runs.append(result)
+            return result
+
+        try:
+            target = self._routing_fn(task, self._agents)
+            if target is None:
+                target = self._agents[0]
+
+            result.metadata["routed_to"] = target.name
+            agent_result = await target.invoke(task, thread=thread)
+            result.agent_results.append(agent_result)
+            result.final_output = agent_result.get("response", "")
+            result.status = "completed"
+        except Exception as exc:
+            result.status = "failed"
+            result.metadata["error"] = str(exc)
+
+        result.elapsed_ms = round((time.time() - t0) * 1000, 2)
+        self._runs.append(result)
+        return result
+
+
+# ---------------------------------------------------------------------------
+# Pipeline Builder — fluent API for composing orchestrations
+# ---------------------------------------------------------------------------
+
+
+class PipelineBuilder:
+    """Fluent API for building multi-step orchestration pipelines.
+
+    Allows composing sequential, concurrent, and routing steps into
+    a single executable pipeline. Makes hackathon demos cleaner.
+
+    Usage:
+        pipeline = (
+            PipelineBuilder()
+            .add_step("research", researcher)
+            .add_concurrent_step("parallel", [analyst_a, analyst_b])
+            .add_step("execute", executor)
+            .build()
+        )
+        result = await pipeline.run("Build a competitive analysis")
+    """
+
+    @dataclass
+    class _Step:
+        name: str
+        agents: list[AgentFrameworkAgent]
+        mode: str  # "sequential" | "concurrent" | "router"
+
+    def __init__(self) -> None:
+        self._steps: list[PipelineBuilder._Step] = []
+
+    def add_step(self, name: str, agent: AgentFrameworkAgent) -> PipelineBuilder:
+        """Add a single-agent sequential step."""
+        self._steps.append(self._Step(name=name, agents=[agent], mode="sequential"))
+        return self
+
+    def add_concurrent_step(
+        self, name: str, agents: list[AgentFrameworkAgent]
+    ) -> PipelineBuilder:
+        """Add a concurrent (fan-out) step."""
+        self._steps.append(self._Step(name=name, agents=agents, mode="concurrent"))
+        return self
+
+    def add_router_step(
+        self,
+        name: str,
+        agents: list[AgentFrameworkAgent],
+        routing_fn: RoutingFn | None = None,
+    ) -> PipelineBuilder:
+        """Add a conditional routing step."""
+        step = self._Step(name=name, agents=agents, mode="router")
+        step._routing_fn = routing_fn  # type: ignore[attr-defined]
+        self._steps.append(step)
+        return self
+
+    def build(self) -> Pipeline:
+        """Build the pipeline."""
+        return Pipeline(list(self._steps))
+
+    @property
+    def step_count(self) -> int:
+        return len(self._steps)
+
+
+class Pipeline:
+    """Executable multi-step orchestration pipeline."""
+
+    def __init__(self, steps: list[PipelineBuilder._Step]) -> None:
+        self._steps = steps
+
+    @property
+    def step_count(self) -> int:
+        return len(self._steps)
+
+    async def run(self, task: str) -> OrchestratorResult:
+        """Execute the pipeline: run each step, passing context forward."""
+        result = OrchestratorResult(pattern="pipeline", task=task)
+        result.status = "running"
+        t0 = time.time()
+
+        if not self._steps:
+            result.status = "failed"
+            result.metadata["error"] = "Empty pipeline"
+            result.elapsed_ms = (time.time() - t0) * 1000
+            return result
+
+        current_input = task
+        step_results: list[dict[str, Any]] = []
+
+        try:
+            for step in self._steps:
+                if step.mode == "sequential":
+                    agent = step.agents[0]
+                    ar = await agent.invoke(current_input)
+                    step_results.append({"step": step.name, "mode": step.mode, **ar})
+                    current_input = (
+                        f"Previous step ({step.name}) output:\n"
+                        f"{ar['response']}\n\nOriginal task: {task}"
+                    )
+
+                elif step.mode == "concurrent":
+                    tasks = [a.invoke(current_input) for a in step.agents]
+                    agent_results = await asyncio.gather(*tasks, return_exceptions=True)
+                    merged_parts = []
+                    for i, ar in enumerate(agent_results):
+                        if isinstance(ar, Exception):
+                            step_results.append({
+                                "step": step.name,
+                                "agent": step.agents[i].name,
+                                "status": "failed",
+                                "error": str(ar),
+                            })
+                        else:
+                            step_results.append({"step": step.name, "mode": step.mode, **ar})
+                            merged_parts.append(ar.get("response", ""))
+                    current_input = (
+                        f"Previous step ({step.name}) outputs:\n"
+                        f"{chr(10).join(merged_parts)}\n\nOriginal task: {task}"
+                    )
+
+                elif step.mode == "router":
+                    routing_fn = getattr(step, "_routing_fn", None) or keyword_router
+                    target = routing_fn(current_input, step.agents)
+                    if target is None:
+                        target = step.agents[0]
+                    ar = await target.invoke(current_input)
+                    step_results.append({"step": step.name, "mode": step.mode, "routed_to": target.name, **ar})
+                    current_input = (
+                        f"Previous step ({step.name}, routed to {target.name}) output:\n"
+                        f"{ar['response']}\n\nOriginal task: {task}"
+                    )
+
+            result.agent_results = step_results
+            result.final_output = step_results[-1].get("response", "") if step_results else ""
+            result.status = "completed"
+            result.metadata["steps_completed"] = len(step_results)
+
+        except Exception as exc:
+            result.status = "failed"
+            result.metadata["error"] = str(exc)
+
+        result.elapsed_ms = round((time.time() - t0) * 1000, 2)
+        return result
