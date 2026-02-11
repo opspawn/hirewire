@@ -348,7 +348,7 @@ hirewire/
 │   ├── storage.py           # SQLite persistence layer
 │   └── config.py            # Multi-provider configuration
 ├── deploy/                  # Azure Container Apps deployment (Bicep + scripts)
-├── tests/                   # 1293+ tests across 37 test files
+├── tests/                   # 1293+ tests across 33 test files
 ├── demo/                    # 3 runnable demo scenarios with CLI
 ├── scripts/                 # Deployment and utility scripts
 ├── ARCHITECTURE.md          # Detailed system design

@@ -17,13 +17,14 @@
 
 ## Demo
 - [x] `demo/record_demo.py` runs all 8 stages end-to-end (--fast mode verified)
+- [x] `demo/DEMO_TRANSCRIPT.md` — full output formatted for video script reference
 - [x] Dashboard works standalone (no server needed) with demo data
 - [ ] Demo video recorded and uploaded
 - [x] Demo scenarios: landing-page, research, agent-hiring, showcase
 
 ## Tests
 - [x] 1293 tests passing (`python3 -m pytest tests/ -q`)
-- [x] 37 test files covering agents, workflows, marketplace, payments, API, Foundry, A2A, MCP
+- [x] 33 test files covering agents, workflows, marketplace, payments, API, Foundry, A2A, MCP
 
 ## Hackathon Requirements
 - [ ] Microsoft Learn Skilling Plan completed (BLOCKED - Sean)
