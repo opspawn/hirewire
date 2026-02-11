@@ -98,6 +98,50 @@ class TestShowcaseScenario:
         assert hiring_stage[0]["status"] in ("completed", "failed")
 
 
+class TestRecordDemo:
+    @pytest.mark.asyncio
+    async def test_recorded_demo_completes(self):
+        from demo.record_demo import run_recorded_demo
+
+        result = await run_recorded_demo(fast=True)
+
+        assert "stage_1" in result
+        assert "stage_8" in result
+        assert result["stage_1"]["count"] == 4
+        assert result["stage_8"]["total_elapsed_s"] >= 0
+
+    @pytest.mark.asyncio
+    async def test_recorded_demo_has_all_stages(self):
+        from demo.record_demo import run_recorded_demo
+
+        result = await run_recorded_demo(fast=True)
+
+        for i in range(1, 9):
+            assert f"stage_{i}" in result
+
+    def test_record_demo_parser_defaults(self):
+        from demo.record_demo import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args([])
+        assert args.fast is False
+        assert args.stage_pause == 2.0
+
+    def test_record_demo_parser_fast(self):
+        from demo.record_demo import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--fast"])
+        assert args.fast is True
+
+    def test_record_demo_parser_custom_pause(self):
+        from demo.record_demo import build_parser
+
+        parser = build_parser()
+        args = parser.parse_args(["--pause", "3.5"])
+        assert args.stage_pause == 3.5
+
+
 class TestRunDemoCLI:
     def test_parser_accepts_valid_scenarios(self):
         from demo.run_demo import build_parser
