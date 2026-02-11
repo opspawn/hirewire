@@ -33,12 +33,18 @@ def _reset_settings_cache():
 
 @pytest.fixture(autouse=True)
 def _reset_storage():
-    """Reset the SQLite storage between tests to prevent cross-contamination."""
+    """Reset the SQLite storage between tests to prevent cross-contamination.
+
+    Uses clear_all() instead of creating a new SQLiteStorage each time —
+    creating a new storage instance takes ~500ms (schema init, WAL mode),
+    while clear_all() takes <5ms.
+    """
     import src.storage as storage_mod
 
-    # Reset the global storage singleton with a fresh temp DB per test
     test_db = os.path.join(_test_db_dir, f"test_{os.getpid()}.db")
-    storage_mod._storage = storage_mod.SQLiteStorage(test_db)
+    if storage_mod._storage is None:
+        storage_mod._storage = storage_mod.SQLiteStorage(test_db)
+    else:
+        storage_mod._storage.clear_all()
     yield
-    # Clean up after test
-    storage_mod._storage = storage_mod.SQLiteStorage(test_db)
+    storage_mod._storage.clear_all()
